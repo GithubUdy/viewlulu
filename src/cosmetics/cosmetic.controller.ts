@@ -1,6 +1,6 @@
-// cosmetic.controller.ts (최종: 이미지 URL 안전 매핑 추가)
+// cosmetic.controller.ts (최종본: 이미지 URL 매핑 + 삭제 기능 추가)
 import { Response } from 'express';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3, S3_BUCKET } from '../config/s3';
 import { AuthRequest } from '../auth/auth.middleware';
 import { v4 as uuidv4 } from 'uuid';
@@ -12,14 +12,17 @@ import {
   createCosmeticInGroup,
   getMyCosmeticGroups,
   getCosmeticDetail,
+
+  // ✅ 삭제용 추가
+  getGroupS3KeysForDelete,
+  deleteCosmeticsByGroupId,
+  deleteCosmeticGroupById,
+  getSingleCosmeticS3KeyForDelete,
+  deleteSingleCosmeticById,
 } from './cosmetic.repository';
 
 /**
- * ✅ 퍼블릭 URL 생성기
- * - env로 S3_PUBLIC_BASE_URL을 주면 그걸 우선 사용
- * - 아니면 기본 S3 virtual-hosted 스타일 사용
- *
- * 예) S3_PUBLIC_BASE_URL=https://viewlulus3.s3.ap-northeast-2.amazonaws.com
+ * ✅ 퍼블릭 URL 생성기 (기존 유지)
  */
 const S3_PUBLIC_BASE_URL =
   process.env.S3_PUBLIC_BASE_URL ||
@@ -28,15 +31,13 @@ const S3_PUBLIC_BASE_URL =
 const toPublicUrl = (keyOrUrl: string | null | undefined) => {
   if (!keyOrUrl) return null;
   if (/^https?:\/\//i.test(keyOrUrl)) return keyOrUrl;
-  // key에 공백/특수문자 있을 수 있어 encodeURI 처리
   return `${S3_PUBLIC_BASE_URL.replace(/\/$/, '')}/${encodeURI(
     keyOrUrl.replace(/^\//, '')
   )}`;
 };
 
 /**
- * POST /cosmetics
- * (기존 단일 업로드 유지)
+ * POST /cosmetics (기존 단일 업로드 유지)
  */
 export const uploadCosmetic = async (req: AuthRequest, res: Response) => {
   try {
@@ -80,8 +81,6 @@ export const uploadCosmetic = async (req: AuthRequest, res: Response) => {
 
 /**
  * GET /cosmetics/me
- * ✅ thumbnailUrl을 "바로 쓸 수 있는 URL"로 내려줌
- * - 기존 구조/필드명 유지
  */
 export const getMyCosmeticsHandler = async (req: AuthRequest, res: Response) => {
   try {
@@ -90,10 +89,7 @@ export const getMyCosmeticsHandler = async (req: AuthRequest, res: Response) => 
 
     const mapped = groups.map((g: any) => ({
       ...g,
-      // DB에 저장된 값이 key든 url이든, 최종적으로 url로 정규화
       thumbnailUrl: toPublicUrl(g.thumbnailUrl),
-      // 디버깅용으로 key도 남기고 싶으면(프론트 깨지지 않음) 추가 가능:
-      // thumbnailKey: g.thumbnailUrl,
     }));
 
     return res.status(200).json(mapped);
@@ -105,7 +101,6 @@ export const getMyCosmeticsHandler = async (req: AuthRequest, res: Response) => 
 
 /**
  * POST /cosmetics/bulk
- * (기존 로직 유지)
  */
 export const uploadCosmeticBulk = async (req: AuthRequest, res: Response) => {
   try {
@@ -174,7 +169,6 @@ export const uploadCosmeticBulk = async (req: AuthRequest, res: Response) => {
 
 /**
  * GET /cosmetics/:id
- * ✅ photos 각 항목에 url 필드 추가 (기존 s3Key 유지)
  */
 export const getCosmeticDetailHandler = async (
   req: AuthRequest,
@@ -200,7 +194,7 @@ export const getCosmeticDetailHandler = async (
     const photos = Array.isArray(cosmetic.photos)
       ? cosmetic.photos.map((p: any) => ({
           ...p,
-          url: toPublicUrl(p.s3Key),
+          url: toPublicUrl(p.s3Key), // ✅ 기존 유지
         }))
       : [];
 
@@ -211,5 +205,70 @@ export const getCosmeticDetailHandler = async (
   } catch (error) {
     console.error('[getCosmeticDetailHandler]', error);
     return res.status(500).json({ message: '화장품 상세 조회 실패' });
+  }
+};
+
+/**
+ * ✅ DELETE /cosmetics/:id
+ * - 우선 groupId(=bulk 등록된 화장품)로 삭제 시도
+ * - 없으면 단일 cosmetics.id 삭제(호환)
+ */
+export const deleteCosmeticHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const id = Number(req.params.id);
+
+    if (isNaN(id)) {
+      return res.status(400).json({ message: 'invalid cosmetic id' });
+    }
+
+    // 1) 그룹(=bulk) 삭제 우선
+    const groupKeys = await getGroupS3KeysForDelete({ groupId: id, userId });
+
+    if (groupKeys.length > 0) {
+      // 1-1) S3 객체 삭제
+      for (const { s3Key } of groupKeys) {
+        await s3.send(
+          new DeleteObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: s3Key,
+          })
+        );
+      }
+
+      // 1-2) DB 삭제 (cosmetics -> cosmetic_groups)
+      await deleteCosmeticsByGroupId({ groupId: id, userId });
+      const deletedGroup = await deleteCosmeticGroupById({ groupId: id, userId });
+
+      if (!deletedGroup) {
+        return res.status(500).json({ message: '그룹 삭제 실패' });
+      }
+
+      return res.status(200).json({ message: '삭제 완료', type: 'group', id });
+    }
+
+    // 2) (호환) 단일 cosmetics.id 삭제
+    const single = await getSingleCosmeticS3KeyForDelete({ cosmeticId: id, userId });
+
+    if (!single) {
+      return res.status(404).json({ message: '삭제할 화장품을 찾을 수 없습니다.' });
+    }
+
+    await s3.send(
+      new DeleteObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: single.s3Key,
+      })
+    );
+
+    const deleted = await deleteSingleCosmeticById({ cosmeticId: id, userId });
+    if (!deleted) {
+      return res.status(500).json({ message: '삭제 실패' });
+    }
+
+    return res.status(200).json({ message: '삭제 완료', type: 'single', id });
+  } catch (error) {
+    console.error('[deleteCosmeticHandler]', error);
+    return res.status(500).json({ message: '삭제 중 오류가 발생했습니다.' });
   }
 };

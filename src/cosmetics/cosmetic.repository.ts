@@ -1,11 +1,4 @@
-/**
- * cosmetic.repository.ts (최종 안정본)
- * --------------------------------------------------
- * ✅ 기존 단일 업로드 구조 유지
- * ✅ 화장품 그룹(bulk) 구조 추가
- * ✅ MyPouch 그룹 기준 조회 지원
- */
-
+// cosmetic.repository.ts (최종본)
 import { query } from '../db';
 
 /* ==================================================
@@ -58,14 +51,10 @@ export const getMyPouchCosmetics = async (userId: number) => {
   return result.rows;
 };
 
-
 /* ==================================================
  * 🔥 신규: 화장품 그룹 (사진 여러 장 = 화장품 1개)
  * ================================================== */
 
-/**
- * 화장품 그룹 생성
- */
 export const createCosmeticGroup = async ({
   userId,
   userEmail,
@@ -87,10 +76,6 @@ export const createCosmeticGroup = async ({
   return result.rows[0];
 };
 
-
-/**
- * 그룹에 속한 화장품 사진 생성
- */
 export const createCosmeticInGroup = async ({
   userId,
   groupId,
@@ -120,11 +105,6 @@ export const createCosmeticInGroup = async ({
  * 🔥 MyPouch 전용: 화장품 그룹 목록 조회
  * ================================================== */
 
-/**
- * MyPouch용 화장품 그룹 리스트
- * - 화장품 1개 = 그룹 1개
- * - 대표 이미지(thumbnail) 1장 포함
- */
 export const getMyCosmeticGroups = async (userId: number) => {
   const result = await query(
     `
@@ -147,15 +127,6 @@ export const getMyCosmeticGroups = async (userId: number) => {
   return result.rows;
 };
 
-
-/* ==================================================
- * (선택) 그룹 상세 조회용
- * - 다음 단계에서 바로 사용 가능
- * ================================================== */
-
-/**
- * 화장품 그룹 상세 (사진 배열)
- */
 export const getCosmeticGroupDetail = async (groupId: number) => {
   const result = await query(
     `
@@ -176,10 +147,6 @@ export const getCosmeticGroupDetail = async (groupId: number) => {
   return result.rows;
 };
 
-/**
- * 화장품 상세 조회
- * - 화장품 1개 = 사진 4장
- */
 export const getCosmeticDetail = async ({
   groupId,
   userId,
@@ -212,4 +179,100 @@ export const getCosmeticDetail = async ({
   );
 
   return result.rows[0];
+};
+
+/* ==================================================
+ * ✅ 삭제 기능 추가 (기존 기능 영향 없음)
+ * ================================================== */
+
+/** 그룹(=bulk) 삭제용: 해당 그룹의 s3_key 전부 가져오기 + 소유권 검사 포함 */
+export const getGroupS3KeysForDelete = async ({
+  groupId,
+  userId,
+}: {
+  groupId: number;
+  userId: number;
+}) => {
+  const result = await query(
+    `
+    SELECT c.s3_key AS "s3Key"
+    FROM cosmetic_groups cg
+    JOIN cosmetics c ON c.group_id = cg.id
+    WHERE cg.id = $1 AND cg.user_id = $2
+    ORDER BY c.created_at ASC
+    `,
+    [groupId, userId]
+  );
+  return result.rows as { s3Key: string }[];
+};
+
+export const deleteCosmeticsByGroupId = async ({
+  groupId,
+  userId,
+}: {
+  groupId: number;
+  userId: number;
+}) => {
+  await query(
+    `
+    DELETE FROM cosmetics
+    WHERE group_id = $1 AND user_id = $2
+    `,
+    [groupId, userId]
+  );
+};
+
+export const deleteCosmeticGroupById = async ({
+  groupId,
+  userId,
+}: {
+  groupId: number;
+  userId: number;
+}) => {
+  const result = await query(
+    `
+    DELETE FROM cosmetic_groups
+    WHERE id = $1 AND user_id = $2
+    RETURNING id
+    `,
+    [groupId, userId]
+  );
+  return result.rows[0] as { id: number } | undefined;
+};
+
+/** (호환) 단일 cosmetics.id 삭제용 */
+export const getSingleCosmeticS3KeyForDelete = async ({
+  cosmeticId,
+  userId,
+}: {
+  cosmeticId: number;
+  userId: number;
+}) => {
+  const result = await query(
+    `
+    SELECT s3_key AS "s3Key"
+    FROM cosmetics
+    WHERE id = $1 AND user_id = $2
+    `,
+    [cosmeticId, userId]
+  );
+  return result.rows[0] as { s3Key: string } | undefined;
+};
+
+export const deleteSingleCosmeticById = async ({
+  cosmeticId,
+  userId,
+}: {
+  cosmeticId: number;
+  userId: number;
+}) => {
+  const result = await query(
+    `
+    DELETE FROM cosmetics
+    WHERE id = $1 AND user_id = $2
+    RETURNING id
+    `,
+    [cosmeticId, userId]
+  );
+  return result.rows[0] as { id: number } | undefined;
 };
