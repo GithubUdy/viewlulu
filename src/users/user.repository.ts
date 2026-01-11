@@ -1,12 +1,12 @@
-// src/users/user.repository.ts
-import { query } from '../db';
+import { pool } from '../config/db';
 
 export const findUserByEmail = async (email: string) => {
-  const result = await query(
-    'SELECT * FROM users WHERE email = ? LIMIT 1',
+  const [rows]: any = await pool.query(
+    'SELECT * FROM users WHERE email = ?',
     [email],
   );
-  return result[0] ?? null;
+
+  return rows[0] ?? null;
 };
 
 export const createUser = async (
@@ -14,7 +14,7 @@ export const createUser = async (
   password: string,
   name: string,
 ) => {
-  const result = await query(
+  const [result]: any = await pool.query(
     'INSERT INTO users (email, password, name) VALUES (?, ?, ?)',
     [email, password, name],
   );

@@ -1,5 +1,4 @@
-// src/types/auth.ts
-export interface LoginRequest {
+export interface JwtPayload {
+  userId: number;
   email: string;
-  password_hash: string;
 }
