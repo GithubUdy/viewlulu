@@ -6,10 +6,10 @@ export interface AuthRequest extends Request {
   user?: JwtPayload;
 }
 
-const authenticate = (
+export const authenticate = (
   req: AuthRequest,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   const authHeader = req.headers.authorization;
 
@@ -27,5 +27,3 @@ const authenticate = (
     return res.status(401).json({ message: '유효하지 않은 토큰입니다.' });
   }
 };
-
-export default authenticate;
