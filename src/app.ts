@@ -6,22 +6,23 @@ import authRoutes from './auth/auth.routes';
 const app = express();
 
 /**
- * ✅ 1️⃣ JSON 파서
- * - 로그인 / 회원가입 전용
+ * ✅ JSON 파서 (auth 전용)
  */
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /**
- * ✅ 2️⃣ auth / 일반 API
+ * ✅ 인증
  */
 app.use('/auth', authRoutes);
+
+/**
+ * ✅ 기타 라우트 (photos 등)
+ */
 app.use(routes);
 
 /**
- * ❗❗❗ 중요 ❗❗❗
- * cosmeticRoutes는 JSON 파서 "이후"가 아니라
- * JSON 파서를 타지 않도록 분리해야 함
+ * ✅ 화장품 (multer multipart)
  */
 app.use(cosmeticRoutes);
 

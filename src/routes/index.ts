@@ -1,10 +1,11 @@
 import { Router } from 'express'
-import authRoutes from '../auth/auth.routes'
 import photoRoutes from '../photos/photo.routes'
 
 const router = Router()
 
-router.use('/auth', authRoutes)
+/**
+ * ❗ authRoutes는 app.ts에서만 관리
+ */
 router.use(photoRoutes)
 
 export default router
