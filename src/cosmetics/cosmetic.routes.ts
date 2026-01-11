@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import authenticate from '../auth/auth.middleware';
+import { authenticate } from '../auth/auth.middleware';
 import * as cosmeticController from './cosmetic.controller'; // ⭐ 핵심
 
 const router = Router();
