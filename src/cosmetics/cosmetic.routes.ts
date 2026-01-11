@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { authenticate } from '../auth/auth.middleware';
-import * as cosmeticController from './cosmetic.controller'; // ⭐ 핵심
+import { detectCosmeticHandler } from './cosmetic.controller';
 
 const router = Router();
 
@@ -10,47 +10,13 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-/* ================= 기존 ================= */
-
-router.post(
-  '/cosmetics',
-  authenticate,
-  upload.single('photo'),
-  cosmeticController.uploadCosmetic
-);
-
-router.get(
-  '/cosmetics/me',
-  authenticate,
-  cosmeticController.getMyCosmeticsHandler
-);
-
-router.post(
-  '/cosmetics/bulk',
-  authenticate,
-  upload.array('photo', 10),
-  cosmeticController.uploadCosmeticBulk
-);
-
-router.get(
-  '/cosmetics/:id',
-  authenticate,
-  cosmeticController.getCosmeticDetailHandler
-);
-
-router.delete(
-  '/cosmetics/:id',
-  authenticate,
-  cosmeticController.deleteCosmeticHandler
-);
-
-/* ================= detect ================= */
+/* ================= detect ONLY ================= */
 
 router.post(
   '/cosmetics/detect',
   authenticate,
   upload.single('photo'),
-  cosmeticController.detectCosmeticHandler
+  detectCosmeticHandler
 );
 
 export default router;
