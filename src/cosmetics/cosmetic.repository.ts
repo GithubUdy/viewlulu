@@ -1,9 +1,8 @@
-// cosmetic.repository.ts (최종본)
+// cosmetic.repository.ts (🔥 FINAL STABLE)
 import { query } from '../db';
 
 /* ==================================================
- * 기존: 단일 화장품(사진 1장 = 1 row)
- * ❗ 절대 수정/삭제 금지
+ * 기존: 단일 화장품 (절대 수정 금지)
  * ================================================== */
 
 export const createCosmetic = async ({
@@ -29,30 +28,8 @@ export const createCosmetic = async ({
   return result.rows[0];
 };
 
-export const getMyPouchCosmetics = async (userId: number) => {
-  const result = await query(
-    `
-    SELECT
-      cg.id           AS "cosmeticId",
-      cg.name         AS "cosmeticName",
-      cg.user_email   AS "userEmail",
-      cg.created_at   AS "createdAt",
-      ARRAY_AGG(c.s3_key ORDER BY c.created_at ASC) AS photos
-    FROM cosmetic_groups cg
-    JOIN cosmetics c
-      ON c.group_id = cg.id
-    WHERE cg.user_id = $1
-    GROUP BY cg.id
-    ORDER BY cg.created_at DESC
-    `,
-    [userId]
-  );
-
-  return result.rows;
-};
-
 /* ==================================================
- * 🔥 신규: 화장품 그룹 (사진 여러 장 = 화장품 1개)
+ * 🔥 화장품 그룹 생성
  * ================================================== */
 
 export const createCosmeticGroup = async ({
@@ -102,23 +79,29 @@ export const createCosmeticInGroup = async ({
 };
 
 /* ==================================================
- * 🔥 MyPouch 전용: 화장품 그룹 목록 조회
+ * 🔥 MyPouch 목록
  * ================================================== */
 
 export const getMyCosmeticGroups = async (userId: number) => {
   const result = await query(
     `
     SELECT
-      cg.id            AS "groupId",
-      cg.name          AS "cosmeticName",
-      cg.user_email    AS "userEmail",
-      cg.created_at    AS "createdAt",
-      MIN(c.s3_key)    AS "thumbnailUrl"
+      cg.id          AS "groupId",
+      cg.name        AS "cosmeticName",
+      cg.user_email  AS "userEmail",
+      cg.created_at  AS "createdAt",
+
+      -- ✅ 대표 이미지: 가장 먼저 업로드된 1장
+      (
+        SELECT c2.s3_key
+        FROM cosmetics c2
+        WHERE c2.group_id = cg.id
+        ORDER BY c2.created_at ASC
+        LIMIT 1
+      ) AS "thumbnailUrl"
+
     FROM cosmetic_groups cg
-    JOIN cosmetics c
-      ON c.group_id = cg.id
     WHERE cg.user_id = $1
-    GROUP BY cg.id
     ORDER BY cg.created_at DESC
     `,
     [userId]
@@ -127,25 +110,9 @@ export const getMyCosmeticGroups = async (userId: number) => {
   return result.rows;
 };
 
-export const getCosmeticGroupDetail = async (groupId: number) => {
-  const result = await query(
-    `
-    SELECT
-      cg.id,
-      cg.name,
-      cg.created_at,
-      c.s3_key
-    FROM cosmetic_groups cg
-    JOIN cosmetics c
-      ON c.group_id = cg.id
-    WHERE cg.id = $1
-    ORDER BY c.created_at ASC
-    `,
-    [groupId]
-  );
-
-  return result.rows;
-};
+/* ==================================================
+ * 🔥 화장품 상세
+ * ================================================== */
 
 export const getCosmeticDetail = async ({
   groupId,
@@ -169,8 +136,7 @@ export const getCosmeticDetail = async ({
         ORDER BY c.created_at ASC
       ) AS photos
     FROM cosmetic_groups cg
-    JOIN cosmetics c
-      ON c.group_id = cg.id
+    JOIN cosmetics c ON c.group_id = cg.id
     WHERE cg.id = $1
       AND cg.user_id = $2
     GROUP BY cg.id
@@ -182,10 +148,44 @@ export const getCosmeticDetail = async ({
 };
 
 /* ==================================================
- * ✅ 삭제 기능 추가 (기존 기능 영향 없음)
+ * 🔥 Detect 전용 후보 조회 (가장 중요)
  * ================================================== */
 
-/** 그룹(=bulk) 삭제용: 해당 그룹의 s3_key 전부 가져오기 + 소유권 검사 포함 */
+export type DetectCandidate = {
+  groupId: number;
+  thumbnailKey: string;
+};
+
+export const getDetectCandidates = async (
+  userId: number,
+  limit: number = 30   // ✅ 안전 제한
+): Promise<DetectCandidate[]> => {
+  const result = await query(
+    `
+    SELECT
+      cg.id AS "groupId",
+      (
+        SELECT c2.s3_key
+        FROM cosmetics c2
+        WHERE c2.group_id = cg.id
+        ORDER BY c2.created_at ASC
+        LIMIT 1
+      ) AS "thumbnailKey"
+    FROM cosmetic_groups cg
+    WHERE cg.user_id = $1
+    ORDER BY cg.created_at DESC
+    LIMIT $2
+    `,
+    [userId, limit]
+  );
+
+  return result.rows;
+};
+
+/* ==================================================
+ * 🔥 삭제 관련 (기존 유지)
+ * ================================================== */
+
 export const getGroupS3KeysForDelete = async ({
   groupId,
   userId,
@@ -237,65 +237,5 @@ export const deleteCosmeticGroupById = async ({
     `,
     [groupId, userId]
   );
-  return result.rows[0] as { id: number } | undefined;
-};
-
-/** (호환) 단일 cosmetics.id 삭제용 */
-export const getSingleCosmeticS3KeyForDelete = async ({
-  cosmeticId,
-  userId,
-}: {
-  cosmeticId: number;
-  userId: number;
-}) => {
-  const result = await query(
-    `
-    SELECT s3_key AS "s3Key"
-    FROM cosmetics
-    WHERE id = $1 AND user_id = $2
-    `,
-    [cosmeticId, userId]
-  );
-  return result.rows[0] as { s3Key: string } | undefined;
-};
-
-export const deleteSingleCosmeticById = async ({
-  cosmeticId,
-  userId,
-}: {
-  cosmeticId: number;
-  userId: number;
-}) => {
-  const result = await query(
-    `
-    DELETE FROM cosmetics
-    WHERE id = $1 AND user_id = $2
-    RETURNING id
-    `,
-    [cosmeticId, userId]
-  );
-  return result.rows[0] as { id: number } | undefined;
-};
-
-export type DetectCandidate = {
-  groupId: number;
-  thumbnailKey: string;
-};
-
-export const getDetectCandidates = async (userId: number): Promise<DetectCandidate[]> => {
-  const result = await query(
-    `
-    SELECT
-      cg.id AS "groupId",
-      MIN(c.s3_key) AS "thumbnailKey"
-    FROM cosmetic_groups cg
-    JOIN cosmetics c ON c.group_id = cg.id
-    WHERE cg.user_id = $1
-    GROUP BY cg.id
-    ORDER BY cg.created_at DESC
-    `,
-    [userId]
-  );
-
-  return result.rows;
+  return result.rows[0];
 };
