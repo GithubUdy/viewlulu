@@ -25,8 +25,8 @@ router.get(
 
 router.post(
   '/cosmetics/bulk',
-  authenticate,
-  upload.array('photo', 10),
+  upload.array('photo', 10),   // ✅ 먼저
+  authenticate,               // ✅ 나중
   uploadCosmeticBulk
 );
 
