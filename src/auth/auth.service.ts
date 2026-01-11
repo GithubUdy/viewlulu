@@ -22,7 +22,7 @@ export class AuthService {
       throw new Error('INVALID_CREDENTIALS');
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
       throw new Error('INVALID_CREDENTIALS');
     }

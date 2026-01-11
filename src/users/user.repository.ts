@@ -1,27 +1,27 @@
 import { pool } from '../config/db';
 
 export const findUserByEmail = async (email: string) => {
-  const [rows]: any = await pool.query(
-    'SELECT * FROM users WHERE email = ?',
-    [email],
+  const result = await pool.query(
+    'SELECT * FROM users WHERE email = $1',
+    [email]
   );
 
-  return rows[0] ?? null;
+  return result.rows[0] ?? null;
 };
 
 export const createUser = async (
   email: string,
-  password: string,
+  passwordHash: string,
   name: string,
 ) => {
-  const [result]: any = await pool.query(
-    'INSERT INTO users (email, password, name) VALUES (?, ?, ?)',
-    [email, password, name],
+  const result = await pool.query(
+    `
+    INSERT INTO users (email, password_hash, name)
+    VALUES ($1, $2, $3)
+    RETURNING id, email, name
+    `,
+    [email, passwordHash, name]
   );
 
-  return {
-    id: result.insertId,
-    email,
-    name,
-  };
+  return result.rows[0];
 };
