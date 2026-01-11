@@ -20,16 +20,21 @@ router.post("/search", upload.single("file"), async (req, res) => {
 
   try {
     const formData = new FormData();
-    formData.append("file", fs.createReadStream(filePath));
+    formData.append(
+        "file",
+        fs.createReadStream(filePath),
+        req.file.originalname
+    );
 
     const aiRes = await axios.post(
-      "http://localhost:8000/pouch/search",
-      formData,
-      {
-        headers: formData.getHeaders(),
-        timeout: 60_000, // AI 서버 여유 시간
-      }
+        "http://localhost:8000/pouch/search",
+        formData,
+        {
+            headers: formData.getHeaders(),
+            timeout: 60_000,
+        }
     );
+
 
     return res.json(aiRes.data);
   } catch (err: any) {
