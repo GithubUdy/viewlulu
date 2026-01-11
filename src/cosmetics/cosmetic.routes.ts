@@ -37,4 +37,5 @@ router.post(
   detectCosmeticHandler
 );
 
+
 export default router;
