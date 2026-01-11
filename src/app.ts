@@ -6,32 +6,30 @@ import authRoutes from './auth/auth.routes';
 const app = express();
 
 /**
- * ✅ 1️⃣ JSON / URLENCODED 파서
- * - auth/login, auth/register 등에서 필수
+ * ✅ 1️⃣ JSON 파서
+ * - 로그인 / 회원가입 전용
  */
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /**
- * ✅ 2️⃣ 공통 라우트
+ * ✅ 2️⃣ auth / 일반 API
  */
+app.use('/auth', authRoutes);
 app.use(routes);
 
 /**
- * ✅ 3️⃣ 인증 라우트
+ * ❗❗❗ 중요 ❗❗❗
+ * cosmeticRoutes는 JSON 파서 "이후"가 아니라
+ * JSON 파서를 타지 않도록 분리해야 함
  */
-app.use('/auth', authRoutes);
+app.use(cosmeticRoutes);
 
 /**
- * ✅ 4️⃣ 헬스 체크
+ * 헬스 체크
  */
 app.get('/', (req, res) => {
   res.json({ status: 'ok' });
 });
-
-/**
- * ✅ 5️⃣ 화장품 라우트 (multer 포함)
- */
-app.use(cosmeticRoutes);
 
 export default app;
