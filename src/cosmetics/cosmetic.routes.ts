@@ -1,4 +1,3 @@
-// cosmetic.routes.ts (최종본)
 import { Router } from 'express';
 import multer from 'multer';
 import { authenticate } from '../auth/auth.middleware';
@@ -8,7 +7,8 @@ import {
   getMyCosmeticsHandler,
   getCosmeticDetailHandler,
   uploadCosmeticBulk,
-  deleteCosmeticHandler, // ✅ 추가
+  deleteCosmeticHandler,
+  detectCosmeticHandler, // ✅ 추가
 } from './cosmetic.controller';
 
 const router = Router();
@@ -27,7 +27,14 @@ router.post(
 
 router.get('/cosmetics/:id', authenticate, getCosmeticDetailHandler);
 
-// ✅ 삭제 라우트 추가
 router.delete('/cosmetics/:id', authenticate, deleteCosmeticHandler);
+
+// ✅ 화장품 인식(비교) API 추가
+router.post(
+  '/cosmetics/detect',
+  authenticate,
+  upload.single('photo'),
+  detectCosmeticHandler
+);
 
 export default router;

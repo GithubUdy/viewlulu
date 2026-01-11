@@ -276,3 +276,26 @@ export const deleteSingleCosmeticById = async ({
   );
   return result.rows[0] as { id: number } | undefined;
 };
+
+export type DetectCandidate = {
+  groupId: number;
+  thumbnailKey: string;
+};
+
+export const getDetectCandidates = async (userId: number): Promise<DetectCandidate[]> => {
+  const result = await query(
+    `
+    SELECT
+      cg.id AS "groupId",
+      MIN(c.s3_key) AS "thumbnailKey"
+    FROM cosmetic_groups cg
+    JOIN cosmetics c ON c.group_id = cg.id
+    WHERE cg.user_id = $1
+    GROUP BY cg.id
+    ORDER BY cg.created_at DESC
+    `,
+    [userId]
+  );
+
+  return result.rows;
+};
