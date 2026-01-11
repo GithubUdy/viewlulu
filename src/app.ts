@@ -2,6 +2,7 @@ import express from 'express';
 import routes from './routes';
 import cosmeticRoutes from './cosmetics/cosmetic.routes';
 import authRoutes from './auth/auth.routes';
+import aiRoutes from "./routes/ai.routes";
 
 const app = express();
 
@@ -20,6 +21,7 @@ app.use('/auth', express.json(), express.urlencoded({ extended: true }), authRou
  */
 app.use(cosmeticRoutes);
 app.use(routes);
+app.use("/ai", aiRoutes);
 
 /**
  * 헬스 체크
