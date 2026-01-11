@@ -1,19 +1,29 @@
-// src/auth/auth.service.ts
 import bcrypt from 'bcrypt';
 import { findUserByEmail, createUser } from '../users/user.repository';
 import { signJwt } from '../config/jwt';
 
 export class AuthService {
-  static async register(email: string, password: string, name: string) {
+  static async register(
+    email: string,
+    password: string,
+    name: string,
+    age: number,
+    gender: string,
+  ) {
     const existingUser = await findUserByEmail(email);
     if (existingUser) {
       throw new Error('EMAIL_EXISTS');
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 10);
 
-    const user = await createUser(email, hashedPassword, name);
-    return user;
+    return await createUser(
+      email,
+      passwordHash,
+      name,
+      age,
+      gender,
+    );
   }
 
   static async login(email: string, password: string) {
@@ -38,6 +48,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         name: user.name,
+        age: user.age,
+        gender: user.gender,
       },
     };
   }
