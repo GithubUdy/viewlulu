@@ -1,3 +1,12 @@
+/**
+ * cosmetic.controller.ts (FINAL STABLE)
+ * --------------------------------------------------
+ * ✅ 기존 기능 절대 유지 (upload / list / bulk / detail / delete / detect)
+ * ✅ exports 누락 방지 (routes.ts에서 import하는 모든 핸들러 제공)
+ * ✅ 런타임 방어 강화 (req.user, file, params, S3 body 등)
+ * ✅ detect: aHash + Hamming (기존 로직 유지)
+ */
+
 import { Response } from 'express';
 import {
   PutObjectCommand,
@@ -23,7 +32,7 @@ import {
   getSingleCosmeticS3KeyForDelete,
   deleteSingleCosmeticById,
 
-  getDetectCandidates, // ✅ detect 후보
+  getDetectCandidates,
 } from './cosmetic.repository';
 
 /* =========================================================
@@ -103,14 +112,16 @@ const hammingDistance = (a: string, b: string): number => {
  * 기존 API들 (절대 깨지면 안 됨)
  * ========================================================= */
 
+/** POST /cosmetics (single upload) */
 export const uploadCosmetic = async (req: AuthRequest, res: Response) => {
   try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
     if (!req.file) return res.status(400).json({ message: '파일이 없습니다.' });
 
-    const userId = req.user!.userId;
+    const userId = req.user.userId;
     const file = req.file;
 
-    const ext = path.extname(file.originalname);
+    const ext = path.extname(file.originalname || '') || '.jpg';
     const cosmeticId = uuidv4();
     const s3Key = `users/${userId}/cosmetics/${cosmeticId}${ext}`;
 
@@ -137,9 +148,12 @@ export const uploadCosmetic = async (req: AuthRequest, res: Response) => {
   }
 };
 
+/** GET /cosmetics/me (my pouch list) */
 export const getMyCosmeticsHandler = async (req: AuthRequest, res: Response) => {
   try {
-    const userId = req.user!.userId;
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    const userId = req.user.userId;
     const groups = await getMyCosmeticGroups(userId);
 
     const mapped = groups.map((g: any) => ({
@@ -154,9 +168,12 @@ export const getMyCosmeticsHandler = async (req: AuthRequest, res: Response) => 
   }
 };
 
+/** POST /cosmetics/bulk (group upload) */
 export const uploadCosmeticBulk = async (req: AuthRequest, res: Response) => {
   try {
-    const { userId, email } = req.user!;
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    const { userId, email } = req.user;
 
     const nameRaw = req.body?.name;
     const name = typeof nameRaw === 'string' ? nameRaw.trim() : '';
@@ -165,19 +182,20 @@ export const uploadCosmeticBulk = async (req: AuthRequest, res: Response) => {
     const files = Array.isArray(req.files)
       ? (req.files as Express.Multer.File[])
       : [];
+
     if (files.length === 0) {
       return res.status(400).json({ message: 'photos are required' });
     }
 
     const group = await createCosmeticGroup({
       userId,
-      userEmail: email,
+      userEmail: email ?? '',
       name,
     });
 
     try {
       for (const file of files) {
-        const ext = path.extname(file.originalname);
+        const ext = path.extname(file.originalname || '') || '.jpg';
         const imageId = uuidv4();
 
         const s3Key = `users/${userId}/cosmetics/${group.id}/${imageId}${ext}`;
@@ -215,17 +233,22 @@ export const uploadCosmeticBulk = async (req: AuthRequest, res: Response) => {
   }
 };
 
+/** GET /cosmetics/:id (group detail) */
 export const getCosmeticDetailHandler = async (req: AuthRequest, res: Response) => {
   try {
-    const userId = req.user!.userId;
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    const userId = req.user.userId;
     const cosmeticId = Number(req.params.id);
 
-    if (isNaN(cosmeticId)) {
+    if (Number.isNaN(cosmeticId)) {
       return res.status(400).json({ message: 'invalid cosmetic id' });
     }
 
     const cosmetic = await getCosmeticDetail({ groupId: cosmeticId, userId });
-    if (!cosmetic) return res.status(404).json({ message: '화장품을 찾을 수 없습니다.' });
+    if (!cosmetic) {
+      return res.status(404).json({ message: '화장품을 찾을 수 없습니다.' });
+    }
 
     const photos = Array.isArray(cosmetic.photos)
       ? cosmetic.photos.map((p: any) => ({ ...p, url: toPublicUrl(p.s3Key) }))
@@ -238,12 +261,15 @@ export const getCosmeticDetailHandler = async (req: AuthRequest, res: Response) 
   }
 };
 
+/** DELETE /cosmetics/:id (group delete first, then single delete fallback) */
 export const deleteCosmeticHandler = async (req: AuthRequest, res: Response) => {
   try {
-    const userId = req.user!.userId;
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    const userId = req.user.userId;
     const id = Number(req.params.id);
 
-    if (isNaN(id)) return res.status(400).json({ message: 'invalid cosmetic id' });
+    if (Number.isNaN(id)) return res.status(400).json({ message: 'invalid cosmetic id' });
 
     // 1) 그룹(=bulk) 삭제 우선
     const groupKeys = await getGroupS3KeysForDelete({ groupId: id, userId });
@@ -279,14 +305,13 @@ export const deleteCosmeticHandler = async (req: AuthRequest, res: Response) => 
  * ✅ POST /cosmetics/detect
  * - 업로드된 사진 vs 내 파우치(각 그룹 대표 1장) 비교
  * - aHash + Hamming distance로 최적 매칭 groupId 반환
- *
- * ✅ 기존 응답 유지:
- *   { detectedId: string, bestDistance?: number }
  * ========================================================= */
 
 export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => {
   try {
-    const userId = req.user!.userId;
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    const userId = req.user.userId;
 
     if (!req.file) {
       return res.status(400).json({ message: '파일이 없습니다.' });
@@ -309,7 +334,6 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
     const slice = candidates.slice(0, MAX_COMPARE);
 
     for (const c of slice) {
-      // thumbnailKey가 비어 있으면 건너뜀(DB 이상 방어)
       if (!c.thumbnailKey) continue;
 
       try {
@@ -322,13 +346,7 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
           bestGroupId = c.groupId;
         }
       } catch (e) {
-        // 후보 1개 실패는 전체 실패로 처리하지 않음
-        console.error(
-          '[detectCosmeticHandler][candidate error]',
-          c.groupId,
-          c.thumbnailKey,
-          e
-        );
+        console.error('[detectCosmeticHandler][candidate error]', c.groupId, c.thumbnailKey, e);
       }
     }
 
@@ -345,7 +363,6 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
       });
     }
 
-    // ✅ 프론트 요구: detectedId (string 유지)
     return res.status(200).json({
       detectedId: String(bestGroupId),
       bestDistance,
