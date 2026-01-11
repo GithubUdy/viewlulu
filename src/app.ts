@@ -6,25 +6,20 @@ import authRoutes from './auth/auth.routes';
 const app = express();
 
 /**
- * ✅ JSON 파서 (auth 전용)
+ * ✅ auth / JSON 전용
  */
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use('/auth', express.json(), express.urlencoded({ extended: true }), authRoutes);
 
 /**
- * ✅ 인증
+ * ✅ 기타 JSON 라우트가 있으면 여기에
+ * (지금은 없음)
  */
-app.use('/auth', authRoutes);
 
 /**
- * ✅ 기타 라우트 (photos 등)
- */
-app.use(routes);
-
-/**
- * ✅ 화장품 (multer multipart)
+ * ✅ multipart 라우트 (JSON 파서 ❌)
  */
 app.use(cosmeticRoutes);
+app.use(routes);
 
 /**
  * 헬스 체크
