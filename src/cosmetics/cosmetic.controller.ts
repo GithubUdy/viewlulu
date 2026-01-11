@@ -15,10 +15,10 @@ import path from 'path';
 
 import {
   createCosmetic,
-  getMyCosmetics,
   createCosmeticGroup,
   createCosmeticInGroup,
   getMyCosmeticGroups, // 🔥 추가
+  getCosmeticDetail, // ✅ 추가
 } from './cosmetic.repository';
 
 
@@ -94,7 +94,7 @@ export const getMyCosmeticsHandler = async (req: AuthRequest, res: Response) => 
  */
 export const uploadCosmeticBulk = async (req: AuthRequest, res: Response) => {
   try {
-    const userId = req.user!.userId;
+    const { userId, email } = req.user!;
 
     // name 검증
     const nameRaw = req.body?.name;
@@ -114,7 +114,12 @@ export const uploadCosmeticBulk = async (req: AuthRequest, res: Response) => {
     }
 
     // 1️⃣ 화장품 그룹 생성
-    const group = await createCosmeticGroup({ userId, name });
+    const group = await createCosmeticGroup({
+      userId,
+      userEmail: email,
+      name,
+    });
+
 
     try {
       // 2️⃣ 사진 여러 장 처리
@@ -172,5 +177,37 @@ export const uploadCosmeticBulk = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('[uploadCosmeticBulk]', error);
     return res.status(500).json({ message: '화장품 등록 실패' });
+  }
+};
+
+/**
+ * GET /cosmetics/:id
+ * 화장품 상세 조회
+ */
+export const getCosmeticDetailHandler = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const userId = req.user!.userId;
+    const cosmeticId = Number(req.params.id);
+
+    if (isNaN(cosmeticId)) {
+      return res.status(400).json({ message: 'invalid cosmetic id' });
+    }
+
+    const cosmetic = await getCosmeticDetail({
+      groupId: cosmeticId,
+      userId,
+    });
+
+    if (!cosmetic) {
+      return res.status(404).json({ message: '화장품을 찾을 수 없습니다.' });
+    }
+
+    return res.status(200).json(cosmetic);
+  } catch (error) {
+    console.error('[getCosmeticDetailHandler]', error);
+    return res.status(500).json({ message: '화장품 상세 조회 실패' });
   }
 };

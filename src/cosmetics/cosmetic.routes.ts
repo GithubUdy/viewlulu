@@ -5,6 +5,7 @@ import { uploadCosmeticBulk } from './cosmetic.controller';
 import {
   uploadCosmetic,
   getMyCosmeticsHandler,
+  getCosmeticDetailHandler,
 } from './cosmetic.controller';
 
 const router = Router();
@@ -29,5 +30,8 @@ router.post(
   authenticate,               // ✅ 나중
   uploadCosmeticBulk
 );
+
+router.get('/cosmetics/:id', authenticate, getCosmeticDetailHandler);
+
 
 export default router;

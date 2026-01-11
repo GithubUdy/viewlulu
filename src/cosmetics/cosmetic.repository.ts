@@ -36,20 +36,28 @@ export const createCosmetic = async ({
   return result.rows[0];
 };
 
-export const getMyCosmetics = async (userId: number) => {
+export const getMyPouchCosmetics = async (userId: number) => {
   const result = await query(
     `
-    SELECT id, s3_key, created_at
-    FROM cosmetics
-    WHERE user_id = $1
-      AND group_id IS NULL
-    ORDER BY created_at DESC
+    SELECT
+      cg.id           AS "cosmeticId",
+      cg.name         AS "cosmeticName",
+      cg.user_email   AS "userEmail",
+      cg.created_at   AS "createdAt",
+      ARRAY_AGG(c.s3_key ORDER BY c.created_at ASC) AS photos
+    FROM cosmetic_groups cg
+    JOIN cosmetics c
+      ON c.group_id = cg.id
+    WHERE cg.user_id = $1
+    GROUP BY cg.id
+    ORDER BY cg.created_at DESC
     `,
     [userId]
   );
 
   return result.rows;
 };
+
 
 /* ==================================================
  * 🔥 신규: 화장품 그룹 (사진 여러 장 = 화장품 1개)
@@ -60,22 +68,25 @@ export const getMyCosmetics = async (userId: number) => {
  */
 export const createCosmeticGroup = async ({
   userId,
+  userEmail,
   name,
 }: {
   userId: number;
+  userEmail: string;
   name: string;
 }) => {
   const result = await query(
     `
-    INSERT INTO cosmetic_groups (user_id, name)
-    VALUES ($1, $2)
-    RETURNING id, user_id, name, created_at
+    INSERT INTO cosmetic_groups (user_id, user_email, name)
+    VALUES ($1, $2, $3)
+    RETURNING id, user_id, user_email, name, created_at
     `,
-    [userId, name]
+    [userId, userEmail, name]
   );
 
   return result.rows[0];
 };
+
 
 /**
  * 그룹에 속한 화장품 사진 생성
@@ -118,10 +129,11 @@ export const getMyCosmeticGroups = async (userId: number) => {
   const result = await query(
     `
     SELECT
-      cg.id,
-      cg.name,
-      cg.created_at,
-      MIN(c.s3_key) AS thumbnail
+      cg.id            AS "groupId",
+      cg.name          AS "cosmeticName",
+      cg.user_email    AS "userEmail",
+      cg.created_at    AS "createdAt",
+      MIN(c.s3_key)    AS "thumbnailUrl"
     FROM cosmetic_groups cg
     JOIN cosmetics c
       ON c.group_id = cg.id
@@ -134,6 +146,7 @@ export const getMyCosmeticGroups = async (userId: number) => {
 
   return result.rows;
 };
+
 
 /* ==================================================
  * (선택) 그룹 상세 조회용
@@ -161,4 +174,42 @@ export const getCosmeticGroupDetail = async (groupId: number) => {
   );
 
   return result.rows;
+};
+
+/**
+ * 화장품 상세 조회
+ * - 화장품 1개 = 사진 4장
+ */
+export const getCosmeticDetail = async ({
+  groupId,
+  userId,
+}: {
+  groupId: number;
+  userId: number;
+}) => {
+  const result = await query(
+    `
+    SELECT
+      cg.id AS "cosmeticId",
+      cg.name AS "cosmeticName",
+      cg.created_at AS "createdAt",
+      ARRAY_AGG(
+        json_build_object(
+          's3Key', c.s3_key,
+          'originalName', c.original_name,
+          'mimeType', c.mime_type
+        )
+        ORDER BY c.created_at ASC
+      ) AS photos
+    FROM cosmetic_groups cg
+    JOIN cosmetics c
+      ON c.group_id = cg.id
+    WHERE cg.id = $1
+      AND cg.user_id = $2
+    GROUP BY cg.id
+    `,
+    [groupId, userId]
+  );
+
+  return result.rows[0];
 };
