@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { authenticate } from '../auth/auth.middleware';
+import authenticate from '../auth/auth.middleware';
 
 import {
   uploadCosmetic,
