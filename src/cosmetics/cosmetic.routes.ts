@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import authenticate from '../auth/auth.middleware';
+import authenticate from '../auth/auth.middleware'; // ⭐ default import
 import * as cosmeticController from './cosmetic.controller';
 
 const router = Router();
@@ -10,9 +10,7 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-/* =====================================================
- * 기존 기능 (절대 깨지면 안 됨)
- * ===================================================== */
+/* ================= 기존 ================= */
 
 router.post(
   '/cosmetics',
@@ -46,9 +44,7 @@ router.delete(
   cosmeticController.deleteCosmeticHandler
 );
 
-/* =====================================================
- * 🔥 화장품 인식
- * ===================================================== */
+/* ================= detect ================= */
 
 router.post(
   '/cosmetics/detect',
