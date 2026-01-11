@@ -1,27 +1,13 @@
 import { Router } from 'express';
 import multer from 'multer';
 import authenticate from '../auth/auth.middleware';
-
-import {
-  uploadCosmetic,
-  getMyCosmeticsHandler,
-  getCosmeticDetailHandler,
-  uploadCosmeticBulk,
-  deleteCosmeticHandler,
-  detectCosmeticHandler,
-} from './cosmetic.controller';
+import * as cosmeticController from './cosmetic.controller';
 
 const router = Router();
 
-/**
- * ✅ multer: memoryStorage
- * - detect / upload 모두 buffer 필요
- */
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB (안전)
-  },
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
 
 /* =====================================================
@@ -32,45 +18,43 @@ router.post(
   '/cosmetics',
   authenticate,
   upload.single('photo'),
-  uploadCosmetic
+  cosmeticController.uploadCosmetic
 );
 
 router.get(
   '/cosmetics/me',
   authenticate,
-  getMyCosmeticsHandler
+  cosmeticController.getMyCosmeticsHandler
 );
 
 router.post(
   '/cosmetics/bulk',
   authenticate,
   upload.array('photo', 10),
-  uploadCosmeticBulk
+  cosmeticController.uploadCosmeticBulk
 );
 
 router.get(
   '/cosmetics/:id',
   authenticate,
-  getCosmeticDetailHandler
+  cosmeticController.getCosmeticDetailHandler
 );
 
 router.delete(
   '/cosmetics/:id',
   authenticate,
-  deleteCosmeticHandler
+  cosmeticController.deleteCosmeticHandler
 );
 
 /* =====================================================
- * 🔥 화장품 인식 (Node → Python)
- * POST /cosmetics/detect
- * field name: photo
+ * 🔥 화장품 인식
  * ===================================================== */
 
 router.post(
   '/cosmetics/detect',
   authenticate,
-  upload.single('photo'),   // ⭐ 핵심
-  detectCosmeticHandler
+  upload.single('photo'),
+  cosmeticController.detectCosmeticHandler
 );
 
 export default router;
