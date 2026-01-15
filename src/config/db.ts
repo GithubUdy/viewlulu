@@ -1,6 +1,6 @@
 import { Pool } from "pg";
 
-console.log("DB_PASSWORD:", process.env.DB_PASSWORD);
+console.log("DB_PASSWORD:", "Load Correctly");
 
 export const pool = new Pool({
   host: process.env.DB_HOST,
