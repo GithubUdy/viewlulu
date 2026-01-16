@@ -232,6 +232,7 @@ export const uploadCosmeticBulk = async (req: AuthRequest, res: Response) => {
     return res.status(500).json({ message: '화장품 등록 실패' });
   }
 };
+export const createCosmeticBulkHandler = uploadCosmeticBulk;
 
 /** GET /cosmetics/:id (group detail) */
 export const getCosmeticDetailHandler = async (req: AuthRequest, res: Response) => {
