@@ -3,7 +3,11 @@ import multer from 'multer';
 import authenticate from '../auth/auth.middleware';
 import {
   detectCosmeticHandler,
-  createCosmeticBulkHandler,
+  uploadCosmetic,
+  uploadCosmeticBulk,
+  getMyCosmeticsHandler,
+  getCosmeticDetailHandler,
+  deleteCosmeticHandler,
 } from './cosmetic.controller';
 
 const router = Router();
@@ -13,9 +17,23 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
 });
 
-/**
- * 🔍 화장품 인식 (사진 1장)
- */
+/* ================= 단일 업로드 ================= */
+router.post(
+  '/cosmetics',
+  authenticate,
+  upload.single('photo'),
+  uploadCosmetic
+);
+
+/* ================= bulk 업로드 (🔥 이게 핵심) ================= */
+router.post(
+  '/cosmetics/bulk',
+  authenticate,
+  upload.array('photos', 4), // ✅ 프론트와 필드명 일치
+  uploadCosmeticBulk
+);
+
+/* ================= detect ================= */
 router.post(
   '/cosmetics/detect',
   authenticate,
@@ -23,18 +41,9 @@ router.post(
   detectCosmeticHandler
 );
 
-/**
- * 📦 화장품 저장 (사진 4장 + name)
- * ⚠️ 중요: array ❌, fields ✅
- */
-router.post(
-  '/cosmetics/bulk',
-  authenticate,
-  upload.fields([
-    { name: 'photos', maxCount: 4 },
-    { name: 'name', maxCount: 1 },
-  ]),
-  createCosmeticBulkHandler
-);
+/* ================= 조회 / 삭제 ================= */
+router.get('/cosmetics/me', authenticate, getMyCosmeticsHandler);
+router.get('/cosmetics/:id', authenticate, getCosmeticDetailHandler);
+router.delete('/cosmetics/:id', authenticate, deleteCosmeticHandler);
 
 export default router;
