@@ -1,5 +1,6 @@
 // cosmetic.repository.ts (최종본)
 import { query } from '../db';
+import { pool } from '../db';
 
 /* ==================================================
  * 기존: 단일 화장품(사진 1장 = 1 row)
