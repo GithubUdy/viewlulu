@@ -343,7 +343,7 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
 
     for (const c of slice) {
       // 🔥 실제 DB 컬럼은 s3_key
-      const s3Key = c.s3_key || c.thumbnailUrl || c.thumbnail_key;
+      const s3Key = c.thumbnailKey;
 
       if (!s3Key) continue;
 
@@ -354,7 +354,7 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
 
         if (dist < bestDistance) {
           bestDistance = dist;
-          bestGroupId = c.group_id ?? c.groupId;
+          bestGroupId = c.groupId;
         }
       } catch (e) {
         console.error(
