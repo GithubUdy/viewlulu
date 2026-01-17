@@ -1,6 +1,5 @@
 // cosmetic.repository.ts (최종본)
 import { query } from '../db';
-import { pool } from '../db/pool';
 
 /* ==================================================
  * 기존: 단일 화장품(사진 1장 = 1 row)
@@ -294,7 +293,7 @@ export type DetectCandidate = {
  */
 
 export const getDetectCandidates = async (userId: number) => {
-  const { rows } = await pool.query(
+  const result = await query(
     `
     SELECT
       cg.id AS "groupId",
@@ -309,5 +308,6 @@ export const getDetectCandidates = async (userId: number) => {
     [userId]
   );
 
-  return rows as DetectCandidate[];
+  return result.rows;
 };
+
