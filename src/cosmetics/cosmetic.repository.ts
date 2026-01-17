@@ -284,14 +284,23 @@ export type DetectCandidate = {
   thumbnailKey: string;
 };
 
-export const getDetectCandidates = async (userId: number): Promise<DetectCandidate[]> => {
-  const result = await query(
+/**
+ * detect 후보 조회 (각 그룹 대표 1장)
+ * --------------------------------------------------
+ * 반환 필드:
+ * - group_id
+ * - s3_key
+ */
+
+export const getDetectCandidates = async (userId: number) => {
+  const { rows } = await pool.query(
     `
     SELECT
-      cg.id AS "groupId",
-      MIN(c.thumbnail_key) AS "thumbnailKey"
+      cg.id AS group_id,
+      MIN(c.s3_key) AS s3_key
     FROM cosmetic_groups cg
-    JOIN cosmetics c ON c.group_id = cg.id
+    JOIN cosmetics c
+      ON c.group_id = cg.id
     WHERE cg.user_id = $1
     GROUP BY cg.id
     ORDER BY cg.created_at DESC
@@ -299,5 +308,5 @@ export const getDetectCandidates = async (userId: number): Promise<DetectCandida
     [userId]
   );
 
-  return result.rows;
+  return rows;
 };

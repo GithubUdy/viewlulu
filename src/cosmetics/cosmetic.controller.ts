@@ -311,46 +311,57 @@ export const deleteCosmeticHandler = async (req: AuthRequest, res: Response) => 
  * - aHash + Hamming distance로 최적 매칭 groupId 반환
  * ========================================================= */
 
+/** POST /cosmetics/detect */
 export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => {
   try {
-    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
-
-    const userId = req.user.userId;
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
 
     if (!req.file) {
       return res.status(400).json({ message: '파일이 없습니다.' });
     }
 
-    // 1) 업로드 이미지 해시
+    const userId = req.user.userId;
+
+    // 1️⃣ 업로드 이미지 해시
     const inputHash = await computeAHash(req.file.buffer);
 
-    // 2) 내 후보(그룹 대표 이미지 key 목록)
+    // 2️⃣ 내 파우치 후보들 (각 그룹 대표 1장)
     const candidates = await getDetectCandidates(userId);
+
     if (!candidates || candidates.length === 0) {
       return res.status(404).json({ message: '등록된 화장품이 없습니다.' });
     }
 
-    // 3) 후보들과 비교 (대표 1장씩)
     let bestGroupId: number | null = null;
     let bestDistance = Number.MAX_SAFE_INTEGER;
 
+    // 과도한 비교 방지
     const MAX_COMPARE = 30;
     const slice = candidates.slice(0, MAX_COMPARE);
 
     for (const c of slice) {
-      if (!c.thumbnailKey) continue;
+      // 🔥 실제 DB 컬럼은 s3_key
+      const s3Key = c.s3_key || c.thumbnailUrl || c.thumbnail_key;
+
+      if (!s3Key) continue;
 
       try {
-        const buf = await getS3ObjectBuffer(c.thumbnailKey);
+        const buf = await getS3ObjectBuffer(s3Key);
         const candHash = await computeAHash(buf);
         const dist = hammingDistance(inputHash, candHash);
 
         if (dist < bestDistance) {
           bestDistance = dist;
-          bestGroupId = c.groupId;
+          bestGroupId = c.group_id ?? c.groupId;
         }
       } catch (e) {
-        console.error('[detectCosmeticHandler][candidate error]', c.groupId, c.thumbnailKey, e);
+        console.error(
+          '[detectCosmeticHandler][candidate error]',
+          s3Key,
+          e
+        );
       }
     }
 
@@ -358,7 +369,7 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
       return res.status(500).json({ message: '인식 처리 실패' });
     }
 
-    // 4) 너무 다르면 미검출 처리
+    // 3️⃣ 임계값 초과 → 미검출
     const THRESHOLD = 18;
     if (bestDistance > THRESHOLD) {
       return res.status(404).json({
@@ -372,7 +383,7 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
       bestDistance,
     });
   } catch (error) {
-    console.error('[detectCosmeticHandler]', error);
+    console.error('[detectCosmeticHandler][FATAL]', error);
     return res.status(500).json({ message: '인식 실패' });
   }
 };
