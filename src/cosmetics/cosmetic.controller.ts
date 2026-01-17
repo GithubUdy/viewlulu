@@ -157,7 +157,9 @@ export const getMyCosmeticsHandler = async (req: AuthRequest, res: Response) => 
     const groups = await getMyCosmeticGroups(userId);
 
     const mapped = groups.map((g: any) => ({
-      ...g,
+      groupId: g.groupId ?? g.id,
+      cosmeticName: g.cosmeticName ?? g.name,
+      createdAt: g.createdAt ?? g.created_at,
       thumbnailUrl: toPublicUrl(g.thumbnailUrl),
     }));
 
@@ -167,6 +169,7 @@ export const getMyCosmeticsHandler = async (req: AuthRequest, res: Response) => 
     return res.status(500).json({ message: '조회 실패' });
   }
 };
+
 
 /** POST /cosmetics/bulk (group upload) */
 export const uploadCosmeticBulk = async (req: AuthRequest, res: Response) => {
