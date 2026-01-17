@@ -343,7 +343,7 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
 
     for (const c of slice) {
       // 🔥 실제 DB 컬럼은 s3_key
-      const s3Key = c.thumbnailKey;
+      const s3Key = c.s3Key;
 
       if (!s3Key) continue;
 

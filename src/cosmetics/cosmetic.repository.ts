@@ -135,7 +135,6 @@ export const getCosmeticGroupDetail = async (groupId: number) => {
       cg.name,
       cg.created_at,
       c.s3_key,
-      c.thumbnail_key,
     FROM cosmetic_groups cg
     JOIN cosmetics c
       ON c.group_id = cg.id
@@ -164,7 +163,7 @@ export const getCosmeticDetail = async ({
       ARRAY_AGG(
         json_build_object(
           's3Key', c.s3_key,
-          'thumbnailKey', c.thumbnail_key,
+          'thumbnailKey',
           'originalName', c.original_name,
           'mimeType', c.mime_type
         )
@@ -281,7 +280,7 @@ export const deleteSingleCosmeticById = async ({
 
 export type DetectCandidate = {
   groupId: number;
-  thumbnailKey: string;
+  s3Key: string;
 };
 
 /**
@@ -297,7 +296,7 @@ export const getDetectCandidates = async (userId: number) => {
     `
     SELECT
       cg.id AS "groupId",
-      MIN(c.s3_key) AS "thumbnailKey"
+      MIN(c.s3_key) AS "s3Key"
     FROM cosmetic_groups cg
     JOIN cosmetics c
       ON c.group_id = cg.id
@@ -310,4 +309,3 @@ export const getDetectCandidates = async (userId: number) => {
 
   return result.rows;
 };
-
