@@ -109,17 +109,17 @@ export const getMyCosmeticGroups = async (userId: number) => {
   const result = await query(
     `
     SELECT
-      cg.id            AS "groupId",
-      cg.name          AS "cosmeticName",
-      cg.user_email    AS "userEmail",
-      cg.created_at    AS "createdAt",
-      MIN(c.thumbnail_key) AS "thumbnailUrl"
+      cg.id AS "groupId",
+      cg.name AS "cosmeticName",
+      cg.created_at AS "createdAt",
+      MIN(c.s3_key) AS "thumbnailUrl"
     FROM cosmetic_groups cg
-    JOIN cosmetics c
+    LEFT JOIN cosmetics c
       ON c.group_id = cg.id
     WHERE cg.user_id = $1
     GROUP BY cg.id
-    ORDER BY cg.created_at DESC
+    ORDER BY cg.created_at DESC;
+
     `,
     [userId]
   );
