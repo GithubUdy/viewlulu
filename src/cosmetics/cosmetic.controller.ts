@@ -342,26 +342,24 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
     const slice = candidates.slice(0, MAX_COMPARE);
 
     for (const c of slice) {
-      // 🔥 실제 DB 컬럼은 s3_key
-      const s3Key = c.s3Key;
+        const s3Key = c.s3Key; // ✅ 반드시 이걸로
 
-      if (!s3Key) continue;
-
-      try {
-        const buf = await getS3ObjectBuffer(s3Key);
-        const candHash = await computeAHash(buf);
-        const dist = hammingDistance(inputHash, candHash);
-
-        if (dist < bestDistance) {
-          bestDistance = dist;
-          bestGroupId = c.groupId;
+        if (!s3Key) {
+          console.error('[DETECT] s3Key missing', c);
+          continue;
         }
-      } catch (e) {
-        console.error(
-          '[detectCosmeticHandler][candidate error]',
-          s3Key,
-          e
-        );
+
+        try {
+          const buf = await getS3ObjectBuffer(s3Key);
+          const candHash = await computeAHash(buf);
+          const dist = hammingDistance(inputHash, candHash);
+
+          if (dist < bestDistance) {
+            bestDistance = dist;
+            bestGroupId = c.groupId;
+          }
+        } catch (e) {
+          console.error('[DETECT][CANDIDATE_FAIL]', s3Key, e);
       }
     }
 
