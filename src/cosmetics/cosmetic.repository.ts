@@ -164,7 +164,6 @@ export const getCosmeticDetail = async ({
       ARRAY_AGG(
         json_build_object(
           's3Key', c.s3_key,
-          'thumbnailKey',
           'originalName', c.original_name,
           'mimeType', c.mime_type
         )
