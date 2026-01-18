@@ -1,5 +1,5 @@
 /**
- * cosmetic.routes.ts (FINAL)
+ * cosmetic.routes.ts (FINAL STABLE)
  * --------------------------------------------------
  * 화장품 관련 API 라우터
  * - 단일 업로드
@@ -7,6 +7,8 @@
  * - detect (사진 1장으로 기존 화장품 비교)
  *
  * ❗ 기존 업로드 로직 절대 변경하지 않음
+ * ❗ detect는 프론트 FormData.append('file', ...) 기준
+ * ❗ multer Unexpected field 오류 방지
  */
 
 import { Router } from 'express';
@@ -23,12 +25,15 @@ import {
 
 const router = Router();
 
+/* =====================================================
+ * multer 설정 (기존 유지)
+ * ===================================================== */
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
 });
 
-/* ================= 업로드 (기존 유지) ================= */
+/* ================= 업로드 (기존 유지, 절대 변경 ❌) ================= */
 
 // 단일 업로드
 router.post(
@@ -46,13 +51,18 @@ router.post(
   uploadCosmeticBulk
 );
 
-/* ================= detect (🔥 핵심 수정) ================= */
+/* ================= detect (🔥 핵심 수정 완료) ================= */
 
-// ✅ detect는 프론트에서 FormData.append('file', ...) 사용
+/**
+ * detect
+ * - 프론트: FormData.append('file', ...)
+ * - multer: single('file')
+ * - 다른 라우트에 영향 없음
+ */
 router.post(
   '/cosmetics/detect',
   authenticate,
-  upload.single('file'), // ⭐️ 여기만 수정
+  upload.single('file'), // ⭐️ field name 정확히 일치
   detectCosmeticHandler
 );
 
