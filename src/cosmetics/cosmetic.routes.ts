@@ -10,7 +10,8 @@
  * ❗ detect는 프론트 FormData.append('file', ...) 기준
  * ❗ multer Unexpected field 오류 방지
  */
-
+import { AuthRequest } from '../auth/auth.middleware';
+import { Response } from 'express';
 import { Router } from 'express';
 import multer from 'multer';
 import authenticate from '../auth/auth.middleware';
@@ -86,11 +87,11 @@ export default router;
 router.post(
   '/cosmetics/detect-test',
   authenticate,
-  (req, res) => {
+  (req: AuthRequest, res: Response) => {
     return res.status(200).json({
       ok: true,
       ping: req.body?.ping ?? null,
-      userId: req.user?.userId,
+      userId: req.user?.userId ?? null,
     });
   }
 );
