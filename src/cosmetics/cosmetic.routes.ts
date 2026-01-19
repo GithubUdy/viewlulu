@@ -51,7 +51,7 @@ router.post(
   uploadCosmeticBulk
 );
 
-/* ================= detect (🔥 핵심 수정 완료) ================= */
+/* ================= detect (🔥 핵심) ================= */
 
 /**
  * detect
@@ -73,4 +73,3 @@ router.get('/cosmetics/:id', authenticate, getCosmeticDetailHandler);
 router.delete('/cosmetics/:id', authenticate, deleteCosmeticHandler);
 
 export default router;
-

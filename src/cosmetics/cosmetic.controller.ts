@@ -336,13 +336,17 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
       return res.status(400).json({ message: '파일이 없습니다.' });
     }
 
+
     // --------------------------------------------------
-    // 1️⃣ Python 서버로 multipart 그대로 전달
+    // 1️⃣ Python 서버로 multipart 그대로 전달 (🔥 안전 버전)
     // --------------------------------------------------
     const form = new FormData();
+
+    // ⚠️ buffer 그대로 전달 (절대 string / base64 변환 금지)
     form.append('file', req.file.buffer, {
       filename: req.file.originalname || 'capture.jpg',
-      contentType: req.file.mimetype,
+      contentType: req.file.mimetype || 'image/jpeg',
+      knownLength: req.file.size, // 🔥 boundary 안정화
     });
 
     const response = await axios.post(
@@ -350,11 +354,14 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
       form,
       {
         headers: {
-          ...form.getHeaders(),
+          ...form.getHeaders(), // ⭐️ boundary 포함 (필수)
         },
-        timeout: 15_000, // 🔥 Python inference 대비
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        timeout: 60_000, // 🔥 inference 여유
       }
     );
+
 
     // --------------------------------------------------
     // 2️⃣ Python 응답 해석
