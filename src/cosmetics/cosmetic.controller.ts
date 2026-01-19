@@ -319,12 +319,14 @@ const avgOfBestTwo = (distances: number[]) => {
   return (sorted[0] + sorted[1]) / 2;
 };
 
-
 /* =========================================================
- * POST /cosmetics/detect (FINAL - GROUP SEARCH)
+ * POST /cosmetics/detect (FINAL – GROUP SEARCH)
  * ========================================================= */
 
-export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => {
+export const detectCosmeticHandler = async (
+  req: AuthRequest,
+  res: Response
+) => {
   let tmpRoot: string | null = null;
 
   try {
@@ -379,61 +381,69 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
     /* --------------------------------------------------
      * 3️⃣ Python 서버로 multipart 전송
      * -------------------------------------------------- */
+    const PYTHON_GROUP_URL =
+      'http://viewlulu.site:8000/pouch/group-search';
+
+    // 🔥 Python 호출 강제 로그
+    console.info('[DETECT][PYTHON_CALL]', {
+      url: PYTHON_GROUP_URL,
+      userId,
+      groupCount: Object.keys(groups).length,
+      uploadedFile: req.file.originalname,
+    });
+
     const form = new FormData();
 
-    // 🔥 촬영 이미지 (buffer 그대로)
+    // 촬영 이미지
     form.append('file', req.file.buffer, {
       filename: req.file.originalname || 'capture.jpg',
       contentType: req.file.mimetype || 'image/jpeg',
       knownLength: req.file.size,
     });
 
-    // 🔥 그룹 정보(JSON)
+    // 그룹 정보
     form.append('groups', JSON.stringify(groups));
 
-    const pyRes = await axios.post(
-      'http://viewlulu.site:8000/pouch/group-search',
-      form,
-      {
-        headers: {
-          ...form.getHeaders(),
-        },
-        timeout: 60_000,
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity,
-      }
-    );
+    const pyRes = await axios.post(PYTHON_GROUP_URL, form, {
+      headers: {
+        ...form.getHeaders(),
+      },
+      timeout: 60_000,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    });
 
     const data = pyRes.data;
 
     /* --------------------------------------------------
-     * 4️⃣ 로그 (🔥 핵심 – 운영/분석용)
+     * 4️⃣ 결과 로그 (🔥 핵심 로그)
      * -------------------------------------------------- */
-    console.info('[DETECT][GROUP]', {
+    console.info('[DETECT][GROUP_RESULT]', {
       userId,
-      uploadedFile: req.file.originalname,
-      groupCount: Object.keys(groups).length,
       matched: data.matched,
       detectedGroupId: data.detectedGroupId ?? null,
       score: data.score ?? null,
     });
 
     /* --------------------------------------------------
-     * 5️⃣ 응답 (기존 앱 규격 유지)
+     * 5️⃣ 응답 (프론트 규격 유지)
      * -------------------------------------------------- */
     if (!data.matched) {
-      return res.status(404).json({
-        message: data.message || '일치하는 화장품을 찾지 못했습니다.',
+      return res.status(200).json({
+        detectedId: null,
+        score: data.score ?? null,
+        matched: false,
       });
     }
 
     return res.status(200).json({
       detectedId: data.detectedGroupId,
       score: data.score,
+      matched: true,
     });
   } catch (error: any) {
     console.error(
-      '[detectCosmeticHandler][GROUP_SEARCH]',
+      '[detectCosmeticHandler][GROUP_SEARCH_ERROR]',
       error?.response?.data || error
     );
 
@@ -447,7 +457,7 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
     if (tmpRoot && fs.existsSync(tmpRoot)) {
       try {
         fs.rmSync(tmpRoot, { recursive: true, force: true });
-      } catch (e) {
+      } catch {
         console.warn('[DETECT][CLEANUP_FAIL]', tmpRoot);
       }
     }
