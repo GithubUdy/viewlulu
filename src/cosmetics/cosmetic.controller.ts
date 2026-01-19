@@ -313,6 +313,8 @@ export const deleteCosmeticHandler = async (req: AuthRequest, res: Response) => 
 
 /** POST /cosmetics/detect */
 export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => {
+  console.time('[Detect_TOTAL]');
+
   try {
     if (!req.user) {
       return res.status(401).json({ message: 'Unauthorized' });
@@ -337,29 +339,28 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
     let bestGroupId: number | null = null;
     let bestDistance = Number.MAX_SAFE_INTEGER;
 
-    // 과도한 비교 방지
     const MAX_COMPARE = 30;
     const slice = candidates.slice(0, MAX_COMPARE);
 
     for (const c of slice) {
-        const s3Key = c.s3Key; // ✅ 반드시 이걸로
+      const s3Key = c.s3Key;
 
-        if (!s3Key) {
-          console.error('[DETECT] s3Key missing', c);
-          continue;
+      if (!s3Key) {
+        console.error('[DETECT] s3Key missing', c);
+        continue;
+      }
+
+      try {
+        const buf = await getS3ObjectBuffer(s3Key);
+        const candHash = await computeAHash(buf);
+        const dist = hammingDistance(inputHash, candHash);
+
+        if (dist < bestDistance) {
+          bestDistance = dist;
+          bestGroupId = c.groupId;
         }
-
-        try {
-          const buf = await getS3ObjectBuffer(s3Key);
-          const candHash = await computeAHash(buf);
-          const dist = hammingDistance(inputHash, candHash);
-
-          if (dist < bestDistance) {
-            bestDistance = dist;
-            bestGroupId = c.groupId;
-          }
-        } catch (e) {
-          console.error('[DETECT][CANDIDATE_FAIL]', s3Key, e);
+      } catch (e) {
+        console.error('[DETECT][CANDIDATE_FAIL]', s3Key, e);
       }
     }
 
@@ -367,7 +368,6 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
       return res.status(500).json({ message: '인식 처리 실패' });
     }
 
-    // 3️⃣ 임계값 초과 → 미검출
     const THRESHOLD = 18;
     if (bestDistance > THRESHOLD) {
       return res.status(404).json({
@@ -383,5 +383,8 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
   } catch (error) {
     console.error('[detectCosmeticHandler][FATAL]', error);
     return res.status(500).json({ message: '인식 실패' });
+  } finally {
+    // ✅ 어떤 경로로 return 되든 반드시 실행됨
+    console.timeEnd('[Detect_TOTAL]');
   }
 };
