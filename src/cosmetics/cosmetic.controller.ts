@@ -333,6 +333,7 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
     const candidates = await getDetectCandidates(userId);
 
     if (!candidates || candidates.length === 0) {
+      // ❗ 기존 응답 구조 유지
       return res.status(404).json({ message: '등록된 화장품이 없습니다.' });
     }
 
@@ -368,12 +369,51 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
       return res.status(500).json({ message: '인식 처리 실패' });
     }
 
-    const THRESHOLD = 18;
+    // --------------------------------------------------
+    // 🔥 안정화 핵심: "엉뚱한 매칭" 방지용 2단계 기준
+    // - THRESHOLD: 절대 기준 (기존 유지)
+    // - MARGIN: 1등/2등 차이가 너무 작으면 오인식 가능성 높음 → 미검출 처리
+    // --------------------------------------------------
+    const THRESHOLD = 18; // ✅ 기존 유지
+    const MARGIN = 2;     // 🔥 안전 마진 (너무 작으면 오인식 발생)
+
+    // 2등도 계산해서 "정말로 확실한 1등인지" 검증 (기존 로직 확장, 구조 유지)
+    let secondBestDistance = Number.MAX_SAFE_INTEGER;
+
+    for (const c of slice) {
+      const s3Key = c.s3Key;
+      if (!s3Key) continue;
+
+      try {
+        const buf = await getS3ObjectBuffer(s3Key);
+        const candHash = await computeAHash(buf);
+        const dist = hammingDistance(inputHash, candHash);
+
+        if (dist !== bestDistance && dist < secondBestDistance) {
+          secondBestDistance = dist;
+        }
+      } catch {
+        // 후보 실패는 무시 (기존 동작 유지)
+      }
+    }
+
+    // 3️⃣ 절대 기준 초과 → 미검출 (기존 유지)
     if (bestDistance > THRESHOLD) {
       return res.status(404).json({
         message: '일치하는 화장품을 찾지 못했습니다.',
         bestDistance,
       });
+    }
+
+    // 4️⃣ 1등/2등 차이가 너무 작으면 → 오인식 방지로 미검출 처리
+    if (secondBestDistance !== Number.MAX_SAFE_INTEGER) {
+      const gap = secondBestDistance - bestDistance;
+      if (gap < MARGIN) {
+        return res.status(404).json({
+          message: '일치하는 화장품을 찾지 못했습니다.',
+          bestDistance,
+        });
+      }
     }
 
     return res.status(200).json({
