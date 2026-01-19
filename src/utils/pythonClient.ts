@@ -2,7 +2,7 @@ import axios from 'axios';
 import FormData from 'form-data';
 import fs from 'fs';
 
-const PYTHON_BASE_URL = process.env.PY_AI_BASE_URL || 'http://localhost:8000';
+const PYTHON_BASE_URL = process.env.PY_AI_BASE_URL || 'http://viewlulu.site:8000';
 
 export const requestGroupSearch = async ({
   imagePath,

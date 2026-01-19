@@ -13,6 +13,8 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
+import axios from 'axios';
+import FormData from 'form-data';
 import { s3, S3_BUCKET } from '../config/s3';
 import { AuthRequest } from '../auth/auth.middleware';
 import { v4 as uuidv4 } from 'uuid';
@@ -309,22 +311,6 @@ export const deleteCosmeticHandler = async (req: AuthRequest, res: Response) => 
   }
 };
 
-/* =========================================================
- * ✅ POST /cosmetics/detect
- * - 업로드된 사진 vs 내 파우치(각 그룹 대표 1장) 비교
- * - aHash + Hamming distance로 최적 매칭 groupId 반환
- * ========================================================= */
-
-/* =========================================================
- * Detect Utility (🔥 신규, 기존 로직 영향 없음)
- * ========================================================= */
-
-/**
- * 그룹 내 여러 거리 중
- * 가장 작은 2개의 평균을 반환
- * - 단일 우연 매칭 방지
- * - 실사용 안정성 ↑
- */
 const avgOfBestTwo = (distances: number[]) => {
   if (distances.length === 0) return Number.MAX_SAFE_INTEGER;
   if (distances.length === 1) return distances[0];
@@ -334,65 +320,76 @@ const avgOfBestTwo = (distances: number[]) => {
 };
 
 
-/** POST /cosmetics/detect */
+/* =========================================================
+ * POST /cosmetics/detect
+ * - 사진을 Python 서버로 전달
+ * - 결과를 그대로 앱에 반환
+ * ========================================================= */
 
 export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => {
-  console.time('[Detect_TOTAL]');
-
   try {
     if (!req.user) {
       return res.status(401).json({ message: 'Unauthorized' });
     }
+
     if (!req.file) {
       return res.status(400).json({ message: '파일이 없습니다.' });
     }
 
-    const userId = req.user.userId;
-
-    // 1️⃣ 그룹 + 그룹 내 전체 s3Key 조회
-    const candidates = await getDetectCandidates(userId);
-    if (!candidates || candidates.length === 0) {
-      return res.status(404).json({ message: '등록된 화장품이 없습니다.' });
-    }
-
-    // 2️⃣ 업로드 이미지 tmp 저장
-    const inputPath = path.join(os.tmpdir(), `input-${Date.now()}.jpg`);
-    fs.writeFileSync(inputPath, req.file.buffer);
-
-    // 3️⃣ 그룹별 이미지 tmp 다운로드
-    const groupFiles: Record<string, string[]> = {};
-
-    for (const g of candidates) {
-      groupFiles[g.groupId] = [];
-
-      for (const s3Key of g.s3Keys) {
-        const buf = await getS3ObjectBuffer(s3Key);
-        const p = path.join(os.tmpdir(), `${g.groupId}-${Date.now()}.jpg`);
-        fs.writeFileSync(p, buf);
-        groupFiles[g.groupId].push(p);
-      }
-    }
-
-    // 4️⃣ Python 서버 호출
-    const result = await requestGroupSearch({
-      imagePath: inputPath,
-      groups: groupFiles,
+    // --------------------------------------------------
+    // 1️⃣ Python 서버로 multipart 그대로 전달
+    // --------------------------------------------------
+    const form = new FormData();
+    form.append('file', req.file.buffer, {
+      filename: req.file.originalname || 'capture.jpg',
+      contentType: req.file.mimetype,
     });
 
-    if (!result.matched) {
+    const response = await axios.post(
+      'http://viewlulu.site:8000/pouch/search',
+      form,
+      {
+        headers: {
+          ...form.getHeaders(),
+        },
+        timeout: 15_000, // 🔥 Python inference 대비
+      }
+    );
+
+    // --------------------------------------------------
+    // 2️⃣ Python 응답 해석
+    // --------------------------------------------------
+    const data = response.data;
+
+    /**
+     * Python 응답 형태:
+     * {
+     *   matched: boolean,
+     *   detectedId?: string,
+     *   bestDistance?: number,
+     *   message?: string
+     * }
+     */
+
+    if (!data.matched) {
       return res.status(404).json({
-        message: '일치하는 화장품을 찾지 못했습니다.',
+        message: data.message || '일치하는 화장품을 찾지 못했습니다.',
+        bestDistance: data.bestDistance ?? null,
       });
     }
 
+    // --------------------------------------------------
+    // 3️⃣ 성공 응답 (🔥 앱 규격 유지)
+    // --------------------------------------------------
     return res.status(200).json({
-      detectedId: String(result.detectedGroupId),
-      score: result.score,
+      detectedId: data.detectedId,
+      bestDistance: data.bestDistance,
     });
-  } catch (e) {
-    console.error('[detectCosmeticHandler]', e);
-    return res.status(500).json({ message: '인식 실패' });
-  } finally {
-    console.timeEnd('[Detect_TOTAL]');
+  } catch (error: any) {
+    console.error('[detectCosmeticHandler][PYTHON]', error?.response?.data || error);
+
+    return res.status(500).json({
+      message: '인식 처리 중 오류가 발생했습니다.',
+    });
   }
 };
