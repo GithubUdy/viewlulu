@@ -18,6 +18,11 @@ import { AuthRequest } from '../auth/auth.middleware';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import sharp from 'sharp';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { requestGroupSearch } from '../utils/pythonClient';
+
 
 import {
   createCosmetic,
@@ -331,6 +336,7 @@ const avgOfBestTwo = (distances: number[]) => {
 
 
 /** POST /cosmetics/detect */
+
 export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => {
   console.time('[Detect_TOTAL]');
 
@@ -338,121 +344,54 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
     if (!req.user) {
       return res.status(401).json({ message: 'Unauthorized' });
     }
-
     if (!req.file) {
       return res.status(400).json({ message: '파일이 없습니다.' });
     }
 
     const userId = req.user.userId;
 
-    // 1️⃣ 업로드 이미지 해시
-    const inputHash = await computeAHash(req.file.buffer);
-
-    // 2️⃣ 내 파우치 후보들 (🔥 그룹 내 전체 사진)
+    // 1️⃣ 그룹 + 그룹 내 전체 s3Key 조회
     const candidates = await getDetectCandidates(userId);
-
     if (!candidates || candidates.length === 0) {
-      // ❗ 기존 응답 구조 유지
       return res.status(404).json({ message: '등록된 화장품이 없습니다.' });
     }
 
-    let bestGroupId: number | null = null;
-    let bestDistance = Number.MAX_SAFE_INTEGER;
+    // 2️⃣ 업로드 이미지 tmp 저장
+    const inputPath = path.join(os.tmpdir(), `input-${Date.now()}.jpg`);
+    fs.writeFileSync(inputPath, req.file.buffer);
 
-    const MAX_COMPARE = 30;
-    const slice = candidates.slice(0, MAX_COMPARE);
+    // 3️⃣ 그룹별 이미지 tmp 다운로드
+    const groupFiles: Record<string, string[]> = {};
 
-    // ==================================================
-    // 🔥 핵심 변경: 그룹 단위 점수 계산
-    // ==================================================
-    for (const group of slice) {
-      const distances: number[] = [];
+    for (const g of candidates) {
+      groupFiles[g.groupId] = [];
 
-      for (const s3Key of group.s3Keys) {
-        if (!s3Key) continue;
-
-        try {
-          const buf = await getS3ObjectBuffer(s3Key);
-          const candHash = await computeAHash(buf);
-          const dist = hammingDistance(inputHash, candHash);
-          distances.push(dist);
-        } catch (e) {
-          console.error('[DETECT][IMAGE_FAIL]', s3Key, e);
-        }
-      }
-
-      if (distances.length === 0) continue;
-
-      // 🔥 그룹 점수: 상위 2개 평균
-      const groupScore = avgOfBestTwo(distances);
-
-      if (groupScore < bestDistance) {
-        bestDistance = groupScore;
-        bestGroupId = group.groupId;
+      for (const s3Key of g.s3Keys) {
+        const buf = await getS3ObjectBuffer(s3Key);
+        const p = path.join(os.tmpdir(), `${g.groupId}-${Date.now()}.jpg`);
+        fs.writeFileSync(p, buf);
+        groupFiles[g.groupId].push(p);
       }
     }
 
-    if (!bestGroupId) {
-      return res.status(500).json({ message: '인식 처리 실패' });
-    }
+    // 4️⃣ Python 서버 호출
+    const result = await requestGroupSearch({
+      imagePath: inputPath,
+      groups: groupFiles,
+    });
 
-    // --------------------------------------------------
-    // 🔥 안정화 핵심: 2단계 기준 (기존 유지)
-    // --------------------------------------------------
-    const THRESHOLD = 18; // ✅ 기존 유지
-    const MARGIN = 2;     // ✅ 기존 유지
-
-    // 2️⃣등 계산 (그룹 단위)
-    let secondBestDistance = Number.MAX_SAFE_INTEGER;
-
-    for (const group of slice) {
-      if (group.groupId === bestGroupId) continue;
-
-      const distances: number[] = [];
-
-      for (const s3Key of group.s3Keys) {
-        try {
-          const buf = await getS3ObjectBuffer(s3Key);
-          const candHash = await computeAHash(buf);
-          distances.push(hammingDistance(inputHash, candHash));
-        } catch {
-          // 기존 동작 유지: 실패 무시
-        }
-      }
-
-      if (distances.length === 0) continue;
-
-      const score = avgOfBestTwo(distances);
-      if (score < secondBestDistance) {
-        secondBestDistance = score;
-      }
-    }
-
-    // 3️⃣ 절대 기준 초과 → 미검출
-    if (bestDistance > THRESHOLD) {
+    if (!result.matched) {
       return res.status(404).json({
         message: '일치하는 화장품을 찾지 못했습니다.',
-        bestDistance,
       });
     }
 
-    // 4️⃣ 1등/2등 차이 너무 작음 → 미검출
-    if (secondBestDistance !== Number.MAX_SAFE_INTEGER) {
-      const gap = secondBestDistance - bestDistance;
-      if (gap < MARGIN) {
-        return res.status(404).json({
-          message: '일치하는 화장품을 찾지 못했습니다.',
-          bestDistance,
-        });
-      }
-    }
-
     return res.status(200).json({
-      detectedId: String(bestGroupId),
-      bestDistance,
+      detectedId: String(result.detectedGroupId),
+      score: result.score,
     });
-  } catch (error) {
-    console.error('[detectCosmeticHandler][FATAL]', error);
+  } catch (e) {
+    console.error('[detectCosmeticHandler]', e);
     return res.status(500).json({ message: '인식 실패' });
   } finally {
     console.timeEnd('[Detect_TOTAL]');
