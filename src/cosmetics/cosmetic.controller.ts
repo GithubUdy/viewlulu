@@ -22,8 +22,6 @@ import path from 'path';
 import sharp from 'sharp';
 import fs from 'fs';
 import os from 'os';
-import { requestGroupSearch } from '../utils/pythonClient';
-
 
 import {
   createCosmetic,
@@ -119,6 +117,7 @@ const hammingDistance = (a: string, b: string): number => {
  * ========================================================= */
 
 /** POST /cosmetics (single upload) */
+/** POST /cosmetics */
 export const uploadCosmetic = async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
@@ -154,7 +153,7 @@ export const uploadCosmetic = async (req: AuthRequest, res: Response) => {
   }
 };
 
-/** GET /cosmetics/me (my pouch list) */
+/** GET /cosmetics/me */
 export const getMyCosmeticsHandler = async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
@@ -321,9 +320,7 @@ const avgOfBestTwo = (distances: number[]) => {
 
 
 /* =========================================================
- * POST /cosmetics/detect
- * - 사진을 Python 서버로 전달
- * - 결과를 그대로 앱에 반환
+ * POST /cosmetics/detect (FINAL - GROUP SEARCH)
  * ========================================================= */
 
 export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => {
@@ -336,64 +333,103 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
       return res.status(400).json({ message: '파일이 없습니다.' });
     }
 
+    const userId = req.user.userId;
 
-    // --------------------------------------------------
-    // 1️⃣ Python 서버로 multipart 그대로 전달 (🔥 안전 버전)
-    // --------------------------------------------------
-    const form = new FormData();
+    /* --------------------------------------------------
+     * 1️⃣ 내 파우치 그룹 + S3 keys 조회
+     * -------------------------------------------------- */
+    const candidates = await getDetectCandidates(userId);
 
-    // ⚠️ buffer 그대로 전달 (절대 string / base64 변환 금지)
-    form.append('file', req.file.buffer, {
-      filename: req.file.originalname || 'capture.jpg',
-      contentType: req.file.mimetype || 'image/jpeg',
-      knownLength: req.file.size, // 🔥 boundary 안정화
-    });
-
-    const response = await axios.post(
-      'http://viewlulu.site:8000/pouch/search',
-      form,
-      {
-        headers: {
-          ...form.getHeaders(), // ⭐️ boundary 포함 (필수)
-        },
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity,
-        timeout: 60_000, // 🔥 inference 여유
-      }
-    );
-
-
-    // --------------------------------------------------
-    // 2️⃣ Python 응답 해석
-    // --------------------------------------------------
-    const data = response.data;
-
-    /**
-     * Python 응답 형태:
-     * {
-     *   matched: boolean,
-     *   detectedId?: string,
-     *   bestDistance?: number,
-     *   message?: string
-     * }
-     */
-
-    if (!data.matched) {
+    if (!candidates || candidates.length === 0) {
       return res.status(404).json({
-        message: data.message || '일치하는 화장품을 찾지 못했습니다.',
-        bestDistance: data.bestDistance ?? null,
+        message: '등록된 화장품이 없습니다.',
       });
     }
 
-    // --------------------------------------------------
-    // 3️⃣ 성공 응답 (🔥 앱 규격 유지)
-    // --------------------------------------------------
+    /* --------------------------------------------------
+     * 2️⃣ S3 이미지 → 임시 파일로 다운로드
+     * -------------------------------------------------- */
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'detect-'));
+    const groups: Record<string, string[]> = {};
+
+    for (const c of candidates) {
+      const groupTmpDir = path.join(tmpRoot, String(c.groupId));
+      fs.mkdirSync(groupTmpDir, { recursive: true });
+
+      groups[c.groupId] = [];
+
+      for (const s3Key of c.s3Keys) {
+        const buffer = await getS3ObjectBuffer(s3Key);
+
+        const ext = path.extname(s3Key) || '.jpg';
+        const tmpPath = path.join(
+          groupTmpDir,
+          `${uuidv4()}${ext}`
+        );
+
+        fs.writeFileSync(tmpPath, buffer);
+        groups[c.groupId].push(tmpPath);
+      }
+    }
+
+    /* --------------------------------------------------
+     * 3️⃣ Python 서버로 multipart 전송
+     * -------------------------------------------------- */
+    const form = new FormData();
+
+    // 🔥 촬영 이미지
+    form.append('file', req.file.buffer, {
+      filename: req.file.originalname || 'capture.jpg',
+      contentType: req.file.mimetype || 'image/jpeg',
+      knownLength: req.file.size,
+    });
+
+    // 🔥 groups JSON
+    form.append('groups', JSON.stringify(groups));
+
+    const pyRes = await axios.post(
+      'http://viewlulu.site:8000/pouch/group-search',
+      form,
+      {
+        headers: {
+          ...form.getHeaders(),
+        },
+        timeout: 60_000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      }
+    );
+
+    const data = pyRes.data;
+
+    /* --------------------------------------------------
+     * 4️⃣ 로그 (🔥 핵심)
+     * -------------------------------------------------- */
+    console.info('[DETECT][GROUP]', {
+      userId,
+      matched: data.matched,
+      detectedGroupId: data.detectedGroupId ?? null,
+      score: data.score ?? null,
+    });
+
+    /* --------------------------------------------------
+     * 5️⃣ 응답
+     * -------------------------------------------------- */
+    if (!data.matched) {
+      return res.status(404).json({
+        message: data.message || '일치하는 화장품을 찾지 못했습니다.',
+      });
+    }
+
     return res.status(200).json({
-      detectedId: data.detectedId,
-      bestDistance: data.bestDistance,
+      detectedId: data.detectedGroupId,
+      score: data.score,
     });
   } catch (error: any) {
-    console.error('[detectCosmeticHandler][PYTHON]', error?.response?.data || error);
+    console.error(
+      '[detectCosmeticHandler][GROUP_SEARCH]',
+      error?.response?.data || error
+    );
 
     return res.status(500).json({
       message: '인식 처리 중 오류가 발생했습니다.',

@@ -1,9 +1,9 @@
-// cosmetic.repository.ts (최종본)
+// cosmetic.repository.ts (FINAL STABLE)
 import { query } from '../db';
 import { pool } from '../config/db';
 
 /* ==================================================
- * 기존: 단일 화장품(사진 1장 = 1 row)
+ * 기존: 단일 화장품 (사진 1장 = 1 row)
  * ❗ 절대 수정/삭제 금지
  * ================================================== */
 
@@ -30,30 +30,8 @@ export const createCosmetic = async ({
   return result.rows[0];
 };
 
-export const getMyPouchCosmetics = async (userId: number) => {
-  const result = await query(
-    `
-    SELECT
-      cg.id           AS "cosmeticId",
-      cg.name         AS "cosmeticName",
-      cg.user_email   AS "userEmail",
-      cg.created_at   AS "createdAt",
-      ARRAY_AGG(c.s3_key ORDER BY c.created_at ASC) AS photos
-    FROM cosmetic_groups cg
-    JOIN cosmetics c
-      ON c.group_id = cg.id
-    WHERE cg.user_id = $1
-    GROUP BY cg.id
-    ORDER BY cg.created_at DESC
-    `,
-    [userId]
-  );
-
-  return result.rows;
-};
-
 /* ==================================================
- * 🔥 신규: 화장품 그룹 (사진 여러 장 = 화장품 1개)
+ * 🔥 화장품 그룹 생성 / 등록
  * ================================================== */
 
 export const createCosmeticGroup = async ({
@@ -103,7 +81,7 @@ export const createCosmeticInGroup = async ({
 };
 
 /* ==================================================
- * 🔥 MyPouch 전용: 화장품 그룹 목록 조회
+ * MyPouch UI 전용 조회 (목록 / 상세)
  * ================================================== */
 
 export const getMyCosmeticGroups = async (userId: number) => {
@@ -119,30 +97,9 @@ export const getMyCosmeticGroups = async (userId: number) => {
       ON c.group_id = cg.id
     WHERE cg.user_id = $1
     GROUP BY cg.id
-    ORDER BY cg.created_at DESC;
-
+    ORDER BY cg.created_at DESC
     `,
     [userId]
-  );
-
-  return result.rows;
-};
-
-export const getCosmeticGroupDetail = async (groupId: number) => {
-  const result = await query(
-    `
-    SELECT
-      cg.id,
-      cg.name,
-      cg.created_at,
-      c.s3_key,
-    FROM cosmetic_groups cg
-    JOIN cosmetics c
-      ON c.group_id = cg.id
-    WHERE cg.id = $1
-    ORDER BY c.created_at ASC
-    `,
-    [groupId]
   );
 
   return result.rows;
@@ -183,10 +140,41 @@ export const getCosmeticDetail = async ({
 };
 
 /* ==================================================
- * ✅ 삭제 기능 추가 (기존 기능 영향 없음)
+ * 🔥 Detect 전용: 사용자 파우치 그룹 + 이미지 키 조회
+ * ==================================================
+ * - detectCosmeticHandler 전용
+ * - Python /pouch/group-search 입력 데이터
  * ================================================== */
 
-/** 그룹(=bulk) 삭제용: 해당 그룹의 s3_key 전부 가져오기 + 소유권 검사 포함 */
+export type DetectCandidate = {
+  groupId: number;
+  s3Keys: string[];
+};
+
+export const getDetectCandidates = async (
+  userId: number
+): Promise<DetectCandidate[]> => {
+  const { rows } = await pool.query(
+    `
+    SELECT
+      cg.id AS "groupId",
+      ARRAY_AGG(c.s3_key ORDER BY c.created_at ASC) AS "s3Keys"
+    FROM cosmetic_groups cg
+    JOIN cosmetics c ON c.group_id = cg.id
+    WHERE cg.user_id = $1
+    GROUP BY cg.id
+    ORDER BY cg.created_at DESC
+    `,
+    [userId]
+  );
+
+  return rows;
+};
+
+/* ==================================================
+ * 삭제 로직 (기존 유지)
+ * ================================================== */
+
 export const getGroupS3KeysForDelete = async ({
   groupId,
   userId,
@@ -241,7 +229,6 @@ export const deleteCosmeticGroupById = async ({
   return result.rows[0] as { id: number } | undefined;
 };
 
-/** (호환) 단일 cosmetics.id 삭제용 */
 export const getSingleCosmeticS3KeyForDelete = async ({
   cosmeticId,
   userId,
@@ -277,28 +264,3 @@ export const deleteSingleCosmeticById = async ({
   );
   return result.rows[0] as { id: number } | undefined;
 };
-
-// cosmetic.repository.ts
-export type DetectCandidate = {
-  groupId: number;
-  s3Keys: string[];
-};
-
-export const getDetectCandidates = async (userId: number) => {
-  const { rows } = await pool.query(
-    `
-    SELECT
-      cg.id AS "groupId",
-      ARRAY_AGG(c.s3_key ORDER BY c.created_at ASC) AS "s3Keys"
-    FROM cosmetic_groups cg
-    JOIN cosmetics c ON c.group_id = cg.id
-    WHERE cg.user_id = $1
-    GROUP BY cg.id
-    ORDER BY cg.created_at DESC
-    `,
-    [userId]
-  );
-
-  return rows as DetectCandidate[];
-};
-
