@@ -278,25 +278,18 @@ export const deleteSingleCosmeticById = async ({
   return result.rows[0] as { id: number } | undefined;
 };
 
+// cosmetic.repository.ts
 export type DetectCandidate = {
   groupId: number;
-  s3Key: string;
+  s3Keys: string[];
 };
-
-/**
- * detect 후보 조회 (각 그룹 대표 1장)
- * --------------------------------------------------
- * 반환 필드:
- * - group_id
- * - s3_key
- */
 
 export const getDetectCandidates = async (userId: number) => {
   const { rows } = await pool.query(
     `
     SELECT
       cg.id AS "groupId",
-      MIN(c.s3_key) AS "s3Key"
+      ARRAY_AGG(c.s3_key ORDER BY c.created_at ASC) AS "s3Keys"
     FROM cosmetic_groups cg
     JOIN cosmetics c ON c.group_id = cg.id
     WHERE cg.user_id = $1
@@ -306,6 +299,6 @@ export const getDetectCandidates = async (userId: number) => {
     [userId]
   );
 
-  return rows;
+  return rows as DetectCandidate[];
 };
 

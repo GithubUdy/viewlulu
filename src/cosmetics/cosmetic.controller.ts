@@ -311,6 +311,25 @@ export const deleteCosmeticHandler = async (req: AuthRequest, res: Response) => 
  * - aHash + Hamming distance로 최적 매칭 groupId 반환
  * ========================================================= */
 
+/* =========================================================
+ * Detect Utility (🔥 신규, 기존 로직 영향 없음)
+ * ========================================================= */
+
+/**
+ * 그룹 내 여러 거리 중
+ * 가장 작은 2개의 평균을 반환
+ * - 단일 우연 매칭 방지
+ * - 실사용 안정성 ↑
+ */
+const avgOfBestTwo = (distances: number[]) => {
+  if (distances.length === 0) return Number.MAX_SAFE_INTEGER;
+  if (distances.length === 1) return distances[0];
+
+  const sorted = [...distances].sort((a, b) => a - b);
+  return (sorted[0] + sorted[1]) / 2;
+};
+
+
 /** POST /cosmetics/detect */
 export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => {
   console.time('[Detect_TOTAL]');
@@ -329,7 +348,7 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
     // 1️⃣ 업로드 이미지 해시
     const inputHash = await computeAHash(req.file.buffer);
 
-    // 2️⃣ 내 파우치 후보들 (각 그룹 대표 1장)
+    // 2️⃣ 내 파우치 후보들 (🔥 그룹 내 전체 사진)
     const candidates = await getDetectCandidates(userId);
 
     if (!candidates || candidates.length === 0) {
@@ -343,25 +362,33 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
     const MAX_COMPARE = 30;
     const slice = candidates.slice(0, MAX_COMPARE);
 
-    for (const c of slice) {
-      const s3Key = c.s3Key;
+    // ==================================================
+    // 🔥 핵심 변경: 그룹 단위 점수 계산
+    // ==================================================
+    for (const group of slice) {
+      const distances: number[] = [];
 
-      if (!s3Key) {
-        console.error('[DETECT] s3Key missing', c);
-        continue;
+      for (const s3Key of group.s3Keys) {
+        if (!s3Key) continue;
+
+        try {
+          const buf = await getS3ObjectBuffer(s3Key);
+          const candHash = await computeAHash(buf);
+          const dist = hammingDistance(inputHash, candHash);
+          distances.push(dist);
+        } catch (e) {
+          console.error('[DETECT][IMAGE_FAIL]', s3Key, e);
+        }
       }
 
-      try {
-        const buf = await getS3ObjectBuffer(s3Key);
-        const candHash = await computeAHash(buf);
-        const dist = hammingDistance(inputHash, candHash);
+      if (distances.length === 0) continue;
 
-        if (dist < bestDistance) {
-          bestDistance = dist;
-          bestGroupId = c.groupId;
-        }
-      } catch (e) {
-        console.error('[DETECT][CANDIDATE_FAIL]', s3Key, e);
+      // 🔥 그룹 점수: 상위 2개 평균
+      const groupScore = avgOfBestTwo(distances);
+
+      if (groupScore < bestDistance) {
+        bestDistance = groupScore;
+        bestGroupId = group.groupId;
       }
     }
 
@@ -370,34 +397,38 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
     }
 
     // --------------------------------------------------
-    // 🔥 안정화 핵심: "엉뚱한 매칭" 방지용 2단계 기준
-    // - THRESHOLD: 절대 기준 (기존 유지)
-    // - MARGIN: 1등/2등 차이가 너무 작으면 오인식 가능성 높음 → 미검출 처리
+    // 🔥 안정화 핵심: 2단계 기준 (기존 유지)
     // --------------------------------------------------
     const THRESHOLD = 18; // ✅ 기존 유지
-    const MARGIN = 2;     // 🔥 안전 마진 (너무 작으면 오인식 발생)
+    const MARGIN = 2;     // ✅ 기존 유지
 
-    // 2등도 계산해서 "정말로 확실한 1등인지" 검증 (기존 로직 확장, 구조 유지)
+    // 2️⃣등 계산 (그룹 단위)
     let secondBestDistance = Number.MAX_SAFE_INTEGER;
 
-    for (const c of slice) {
-      const s3Key = c.s3Key;
-      if (!s3Key) continue;
+    for (const group of slice) {
+      if (group.groupId === bestGroupId) continue;
 
-      try {
-        const buf = await getS3ObjectBuffer(s3Key);
-        const candHash = await computeAHash(buf);
-        const dist = hammingDistance(inputHash, candHash);
+      const distances: number[] = [];
 
-        if (dist !== bestDistance && dist < secondBestDistance) {
-          secondBestDistance = dist;
+      for (const s3Key of group.s3Keys) {
+        try {
+          const buf = await getS3ObjectBuffer(s3Key);
+          const candHash = await computeAHash(buf);
+          distances.push(hammingDistance(inputHash, candHash));
+        } catch {
+          // 기존 동작 유지: 실패 무시
         }
-      } catch {
-        // 후보 실패는 무시 (기존 동작 유지)
+      }
+
+      if (distances.length === 0) continue;
+
+      const score = avgOfBestTwo(distances);
+      if (score < secondBestDistance) {
+        secondBestDistance = score;
       }
     }
 
-    // 3️⃣ 절대 기준 초과 → 미검출 (기존 유지)
+    // 3️⃣ 절대 기준 초과 → 미검출
     if (bestDistance > THRESHOLD) {
       return res.status(404).json({
         message: '일치하는 화장품을 찾지 못했습니다.',
@@ -405,7 +436,7 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
       });
     }
 
-    // 4️⃣ 1등/2등 차이가 너무 작으면 → 오인식 방지로 미검출 처리
+    // 4️⃣ 1등/2등 차이 너무 작음 → 미검출
     if (secondBestDistance !== Number.MAX_SAFE_INTEGER) {
       const gap = secondBestDistance - bestDistance;
       if (gap < MARGIN) {
@@ -424,7 +455,6 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
     console.error('[detectCosmeticHandler][FATAL]', error);
     return res.status(500).json({ message: '인식 실패' });
   } finally {
-    // ✅ 어떤 경로로 return 되든 반드시 실행됨
     console.timeEnd('[Detect_TOTAL]');
   }
 };
