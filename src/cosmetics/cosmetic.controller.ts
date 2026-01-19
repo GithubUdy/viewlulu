@@ -21,6 +21,11 @@ import axios from 'axios';
 import FormData from 'form-data';
 import { v4 as uuidv4 } from 'uuid';
 import { Response } from 'express';
+import pLimit from 'p-limit';
+const S3_CONCURRENCY = 5;
+const limit = pLimit(S3_CONCURRENCY);
+
+
 
 import { AuthRequest } from '../auth/auth.middleware';
 
@@ -355,10 +360,12 @@ export const detectCosmeticHandler = async (
     }
 
     /* --------------------------------------------------
-     * 2️⃣ S3 이미지 → 임시 파일로 다운로드
+     * 2️⃣ S3 이미지 → 임시 파일 (🔥 병렬 제한)
      * -------------------------------------------------- */
     tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'detect-'));
     const groups: Record<string, string[]> = {};
+
+    const downloadTasks: Promise<void>[] = [];
 
     for (const c of candidates) {
       const groupId = String(c.groupId);
@@ -368,15 +375,22 @@ export const detectCosmeticHandler = async (
       groups[groupId] = [];
 
       for (const s3Key of c.s3Keys) {
-        const buffer = await getS3ObjectBuffer(s3Key);
+        const task = limit(async () => {
+          const buffer = await getS3ObjectBuffer(s3Key);
 
-        const ext = path.extname(s3Key) || '.jpg';
-        const tmpPath = path.join(groupTmpDir, `${uuidv4()}${ext}`);
+          const ext = path.extname(s3Key) || '.jpg';
+          const tmpPath = path.join(groupTmpDir, `${uuidv4()}${ext}`);
 
-        fs.writeFileSync(tmpPath, buffer);
-        groups[groupId].push(tmpPath);
+          fs.writeFileSync(tmpPath, buffer);
+          groups[groupId].push(tmpPath);
+        });
+
+        downloadTasks.push(task);
       }
     }
+
+    // 🔥 여기서 병렬 다운로드 실행
+    await Promise.all(downloadTasks);
 
     /* --------------------------------------------------
      * 3️⃣ Python 서버로 multipart 전송
@@ -384,7 +398,6 @@ export const detectCosmeticHandler = async (
     const PYTHON_GROUP_URL =
       'http://viewlulu.site:8000/pouch/group-search';
 
-    // 🔥 Python 호출 강제 로그
     console.info('[DETECT][PYTHON_CALL]', {
       url: PYTHON_GROUP_URL,
       userId,
@@ -394,14 +407,12 @@ export const detectCosmeticHandler = async (
 
     const form = new FormData();
 
-    // 촬영 이미지
     form.append('file', req.file.buffer, {
       filename: req.file.originalname || 'capture.jpg',
       contentType: req.file.mimetype || 'image/jpeg',
       knownLength: req.file.size,
     });
 
-    // 그룹 정보
     form.append('groups', JSON.stringify(groups));
 
     const pyRes = await axios.post(PYTHON_GROUP_URL, form, {
@@ -416,7 +427,7 @@ export const detectCosmeticHandler = async (
     const data = pyRes.data;
 
     /* --------------------------------------------------
-     * 4️⃣ 결과 로그 (🔥 핵심 로그)
+     * 4️⃣ 결과 로그
      * -------------------------------------------------- */
     console.info('[DETECT][GROUP_RESULT]', {
       userId,
@@ -452,7 +463,7 @@ export const detectCosmeticHandler = async (
     });
   } finally {
     /* --------------------------------------------------
-     * 6️⃣ 임시 파일 정리 (🔥 매우 중요)
+     * 6️⃣ 임시 파일 정리
      * -------------------------------------------------- */
     if (tmpRoot && fs.existsSync(tmpRoot)) {
       try {

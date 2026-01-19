@@ -144,6 +144,7 @@ export const getCosmeticDetail = async ({
  * ==================================================
  * - detectCosmeticHandler 전용
  * - Python /pouch/group-search 입력 데이터
+ * - ⚠️ 순서 보장 (created_at ASC)
  * ================================================== */
 
 export type DetectCandidate = {
@@ -160,7 +161,8 @@ export const getDetectCandidates = async (
       cg.id AS "groupId",
       ARRAY_AGG(c.s3_key ORDER BY c.created_at ASC) AS "s3Keys"
     FROM cosmetic_groups cg
-    JOIN cosmetics c ON c.group_id = cg.id
+    JOIN cosmetics c
+      ON c.group_id = cg.id
     WHERE cg.user_id = $1
     GROUP BY cg.id
     ORDER BY cg.created_at DESC
@@ -192,6 +194,7 @@ export const getGroupS3KeysForDelete = async ({
     `,
     [groupId, userId]
   );
+
   return result.rows as { s3Key: string }[];
 };
 
@@ -226,6 +229,7 @@ export const deleteCosmeticGroupById = async ({
     `,
     [groupId, userId]
   );
+
   return result.rows[0] as { id: number } | undefined;
 };
 
@@ -244,6 +248,7 @@ export const getSingleCosmeticS3KeyForDelete = async ({
     `,
     [cosmeticId, userId]
   );
+
   return result.rows[0] as { s3Key: string } | undefined;
 };
 
@@ -262,5 +267,6 @@ export const deleteSingleCosmeticById = async ({
     `,
     [cosmeticId, userId]
   );
+
   return result.rows[0] as { id: number } | undefined;
 };
