@@ -7,21 +7,22 @@
  * ✅ detect: aHash + Hamming (기존 로직 유지)
  */
 
-import { Response } from 'express';
 import {
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
-import axios from 'axios';
-import FormData from 'form-data';
 import { s3, S3_BUCKET } from '../config/s3';
-import { AuthRequest } from '../auth/auth.middleware';
-import { v4 as uuidv4 } from 'uuid';
-import path from 'path';
 import sharp from 'sharp';
 import fs from 'fs';
 import os from 'os';
+import path from 'path';
+import axios from 'axios';
+import FormData from 'form-data';
+import { v4 as uuidv4 } from 'uuid';
+import { Response } from 'express';
+
+import { AuthRequest } from '../auth/auth.middleware';
 
 import {
   createCosmetic,
@@ -324,7 +325,12 @@ const avgOfBestTwo = (distances: number[]) => {
  * ========================================================= */
 
 export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => {
+  let tmpRoot: string | null = null;
+
   try {
+    /* --------------------------------------------------
+     * 0️⃣ 기본 방어
+     * -------------------------------------------------- */
     if (!req.user) {
       return res.status(401).json({ message: 'Unauthorized' });
     }
@@ -349,26 +355,24 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
     /* --------------------------------------------------
      * 2️⃣ S3 이미지 → 임시 파일로 다운로드
      * -------------------------------------------------- */
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'detect-'));
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'detect-'));
     const groups: Record<string, string[]> = {};
 
     for (const c of candidates) {
-      const groupTmpDir = path.join(tmpRoot, String(c.groupId));
-      fs.mkdirSync(groupTmpDir, { recursive: true });
+      const groupId = String(c.groupId);
+      const groupTmpDir = path.join(tmpRoot, groupId);
 
-      groups[c.groupId] = [];
+      fs.mkdirSync(groupTmpDir, { recursive: true });
+      groups[groupId] = [];
 
       for (const s3Key of c.s3Keys) {
         const buffer = await getS3ObjectBuffer(s3Key);
 
         const ext = path.extname(s3Key) || '.jpg';
-        const tmpPath = path.join(
-          groupTmpDir,
-          `${uuidv4()}${ext}`
-        );
+        const tmpPath = path.join(groupTmpDir, `${uuidv4()}${ext}`);
 
         fs.writeFileSync(tmpPath, buffer);
-        groups[c.groupId].push(tmpPath);
+        groups[groupId].push(tmpPath);
       }
     }
 
@@ -377,14 +381,14 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
      * -------------------------------------------------- */
     const form = new FormData();
 
-    // 🔥 촬영 이미지
+    // 🔥 촬영 이미지 (buffer 그대로)
     form.append('file', req.file.buffer, {
       filename: req.file.originalname || 'capture.jpg',
       contentType: req.file.mimetype || 'image/jpeg',
       knownLength: req.file.size,
     });
 
-    // 🔥 groups JSON
+    // 🔥 그룹 정보(JSON)
     form.append('groups', JSON.stringify(groups));
 
     const pyRes = await axios.post(
@@ -403,17 +407,19 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
     const data = pyRes.data;
 
     /* --------------------------------------------------
-     * 4️⃣ 로그 (🔥 핵심)
+     * 4️⃣ 로그 (🔥 핵심 – 운영/분석용)
      * -------------------------------------------------- */
     console.info('[DETECT][GROUP]', {
       userId,
+      uploadedFile: req.file.originalname,
+      groupCount: Object.keys(groups).length,
       matched: data.matched,
       detectedGroupId: data.detectedGroupId ?? null,
       score: data.score ?? null,
     });
 
     /* --------------------------------------------------
-     * 5️⃣ 응답
+     * 5️⃣ 응답 (기존 앱 규격 유지)
      * -------------------------------------------------- */
     if (!data.matched) {
       return res.status(404).json({
@@ -434,5 +440,16 @@ export const detectCosmeticHandler = async (req: AuthRequest, res: Response) => 
     return res.status(500).json({
       message: '인식 처리 중 오류가 발생했습니다.',
     });
+  } finally {
+    /* --------------------------------------------------
+     * 6️⃣ 임시 파일 정리 (🔥 매우 중요)
+     * -------------------------------------------------- */
+    if (tmpRoot && fs.existsSync(tmpRoot)) {
+      try {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+      } catch (e) {
+        console.warn('[DETECT][CLEANUP_FAIL]', tmpRoot);
+      }
+    }
   }
 };
