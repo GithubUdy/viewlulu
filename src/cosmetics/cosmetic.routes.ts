@@ -73,3 +73,24 @@ router.get('/cosmetics/:id', authenticate, getCosmeticDetailHandler);
 router.delete('/cosmetics/:id', authenticate, deleteCosmeticHandler);
 
 export default router;
+
+/* ================= detect TEST (🔥 네트워크 진단용) ================= */
+
+/**
+ * detect-test
+ * - multipart ❌
+ * - JSON body만 받음
+ * - 네트워크 / 프록시 / 인증 확인용
+ * ❗ 진단용이므로 로직 없음
+ */
+router.post(
+  '/cosmetics/detect-test',
+  authenticate,
+  (req, res) => {
+    return res.status(200).json({
+      ok: true,
+      ping: req.body?.ping ?? null,
+      userId: req.user?.userId,
+    });
+  }
+);
