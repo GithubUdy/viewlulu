@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
-import { verifyJwt, signAccessToken } from '../config/jwt';
+import { verifyAccessToken, signAccessToken } from '../config/jwt';
 import { findUserByRefreshToken } from '../users/user.repository';
 
 /**
@@ -84,7 +84,7 @@ export const refresh = async (req: Request, res: Response) => {
     }
 
     // 1️⃣ JWT 유효성 검증
-    const decoded = verifyJwt(refreshToken) as any;
+    const decoded = verifyAccessToken(refreshToken) as any;
 
     // 2️⃣ DB에 실제 존재하는 refreshToken인지 확인
     const user = await findUserByRefreshToken(refreshToken);

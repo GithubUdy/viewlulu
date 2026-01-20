@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyJwt } from '../config/jwt';
+import { verifyAccessToken } from '../config/jwt';
 import { JwtPayload } from '../types/auth';
 
 export interface AuthRequest extends Request {
@@ -19,7 +19,7 @@ const authenticate = (
   const token = authHeader.replace('Bearer ', '');
 
   try {
-    const decoded = verifyJwt(token) as JwtPayload;
+    const decoded = verifyAccessToken(token) as JwtPayload;
     req.user = decoded;
     next();
   } catch (err: any) {
