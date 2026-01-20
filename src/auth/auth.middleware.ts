@@ -12,9 +12,8 @@ const authenticate = (
   next: NextFunction
 ) => {
   const authHeader = req.headers.authorization;
-
   if (!authHeader) {
-    return res.status(401).json({ message: '토큰이 없습니다.' });
+    return res.status(401).json({ message: 'NO_TOKEN' });
   }
 
   const token = authHeader.replace('Bearer ', '');
@@ -23,8 +22,9 @@ const authenticate = (
     const decoded = verifyJwt(token) as JwtPayload;
     req.user = decoded;
     next();
-  } catch {
-    return res.status(401).json({ message: '유효하지 않은 토큰입니다.' });
+  } catch (err: any) {
+    // ❗ access token 만료는 "에러"만 반환
+    return res.status(401).json({ message: 'TOKEN_EXPIRED' });
   }
 };
 
