@@ -7,7 +7,7 @@ if (!JWT_SECRET) {
 }
 
 // ⛔ access token (짧게)
-const ACCESS_EXPIRES_IN = '1m';
+const ACCESS_EXPIRES_IN = '30s';
 
 // ✅ refresh token (길게 – 앱 삭제 전까지 유지 목적)
 const REFRESH_EXPIRES_IN = '90d';
