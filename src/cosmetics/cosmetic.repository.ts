@@ -270,3 +270,32 @@ export const deleteSingleCosmeticById = async ({
 
   return result.rows[0] as { id: number } | undefined;
 };
+/* ==================================================
+ * 🔥 화장품 그룹 수정 (이름 / 개봉일)
+ * ================================================== */
+
+export const updateCosmeticGroup = async ({
+  groupId,
+  userId,
+  cosmeticName,
+  openedAt,
+}: {
+  groupId: number;
+  userId: number;
+  cosmeticName?: string;
+  openedAt?: string;
+}) => {
+  const result = await query(
+    `
+    UPDATE cosmetic_groups
+    SET
+      name = COALESCE($1, name),
+      opened_at = COALESCE($2, opened_at)
+    WHERE id = $3 AND user_id = $4
+    RETURNING id, name, opened_at
+    `,
+    [cosmeticName, openedAt, groupId, userId]
+  );
+
+  return result.rows[0];
+};

@@ -21,6 +21,7 @@ import {
   getMyCosmeticsHandler,
   getCosmeticDetailHandler,
   deleteCosmeticHandler,
+  updateCosmeticHandler,
 } from './cosmetic.controller';
 
 const router = Router();
@@ -70,6 +71,12 @@ router.post(
 
 router.get('/cosmetics/me', authenticate, getMyCosmeticsHandler);
 router.get('/cosmetics/:id', authenticate, getCosmeticDetailHandler);
+router.patch(
+  '/cosmetics/:id',
+  authenticate,
+  updateCosmeticHandler
+);
+
 router.delete('/cosmetics/:id', authenticate, deleteCosmeticHandler);
 
 export default router;

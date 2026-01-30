@@ -43,6 +43,7 @@ import {
   deleteSingleCosmeticById,
 
   getDetectCandidates,
+  updateCosmeticGroup
 } from './cosmetic.repository';
 
 /* =========================================================
@@ -171,6 +172,7 @@ export const getMyCosmeticsHandler = async (req: AuthRequest, res: Response) => 
       groupId: g.groupId ?? g.id,
       cosmeticName: g.cosmeticName ?? g.name,
       createdAt: g.createdAt ?? g.created_at,
+      openedAt: g.openedAt ?? g.opened_at ?? null,
       thumbnailUrl: toPublicUrl(g.thumbnailUrl),
     }));
 
@@ -472,5 +474,50 @@ export const detectCosmeticHandler = async (
         console.warn('[DETECT][CLEANUP_FAIL]', tmpRoot);
       }
     }
+  }
+};
+
+
+/** PATCH /cosmetics/:id (그룹 정보 수정) */
+export const updateCosmeticHandler = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const userId = req.user.userId;
+    const groupId = Number(req.params.id);
+
+    if (Number.isNaN(groupId)) {
+      return res.status(400).json({ message: 'invalid cosmetic id' });
+    }
+
+    const { cosmeticName, openedAt } = req.body;
+
+    if (!cosmeticName && !openedAt) {
+      return res.status(400).json({ message: '수정할 값이 없습니다.' });
+    }
+
+    const updated = await updateCosmeticGroup({
+      groupId,
+      userId,
+      cosmeticName,
+      openedAt,
+    });
+
+    if (!updated) {
+      return res.status(404).json({ message: '화장품을 찾을 수 없습니다.' });
+    }
+
+    return res.status(200).json({
+      message: '수정 완료',
+      cosmetic: updated,
+    });
+  } catch (error) {
+    console.error('[updateCosmeticHandler]', error);
+    return res.status(500).json({ message: '수정 실패' });
   }
 };
