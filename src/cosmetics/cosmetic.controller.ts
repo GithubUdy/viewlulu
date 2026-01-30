@@ -478,64 +478,79 @@ export const detectCosmeticHandler = async (
 };
 
 
-/** PATCH /cosmetics/:id (그룹 정보 수정) */
-/**
- * updateCosmeticHandler (FINAL STABLE)
- * --------------------------------------------------
- * 🔥 화장품 그룹 정보 수정
- * - 이름 변경
- * - 개봉일(opened_at) 수정
- *
- * ❗ cosmetics 테이블 ❌
- * ❗ cosmetic_groups 테이블만 수정
- * ❗ JSON 요청 전용 (multer ❌)
-*/
+/* =========================================================
+ * PATCH /cosmetics/:id
+ * - 화장품 그룹 수정
+ * - created_at = 촬영 날짜 (사용자 수정 가능)
+ * ========================================================= */
+
 export const updateCosmeticHandler = async (
-  req: Request,
+  req: AuthRequest,
   res: Response
 ) => {
   try {
-    const groupId = Number(req.params.id);
-    const userId = (req as any).user.userId;
+    /* --------------------------------------------------
+     * 0️⃣ 인증 방어
+     * -------------------------------------------------- */
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
 
-    /* ===============================
-     * 🔥 BODY 방어 (가장 중요)
-     * =============================== */
-    const body = req.body || {};
-    const cosmeticName = body.cosmeticName;
-    const openedAt = body.purchaseDate; // 프론트 명칭 유지
+    const cosmeticId = Number(req.params.id);
+    if (Number.isNaN(cosmeticId)) {
+      return res.status(400).json({ message: 'invalid cosmetic id' });
+    }
 
-    if (!cosmeticName && !openedAt) {
+    /* --------------------------------------------------
+     * 1️⃣ body 파싱
+     * - createdAt = 촬영일 (DB: created_at)
+     * -------------------------------------------------- */
+    const {
+      cosmeticName,
+      createdAt,  // 📸 촬영 날짜 (YYYY-MM-DD)
+      expiredAt,  // ⏰ 유통기한 (YYYY-MM-DD)
+    } = req.body ?? {};
+
+    if (!cosmeticName && !createdAt && !expiredAt) {
       return res.status(400).json({
-        message: 'NO_UPDATE_FIELDS',
+        message: '수정할 항목이 없습니다.',
       });
     }
 
-    /* ===============================
-     * 🔥 DB UPDATE (cosmetic_groups)
-     * =============================== */
+    /* --------------------------------------------------
+     * 2️⃣ DB 업데이트
+     * -------------------------------------------------- */
     const updated = await updateCosmeticGroup({
-      groupId,
-      userId,
+      groupId: cosmeticId,
+      userId: req.user.userId,
       cosmeticName,
-      openedAt,
+      createdAt,
+      expiredAt,
     });
 
     if (!updated) {
       return res.status(404).json({
-        message: 'COSMETIC_NOT_FOUND',
+        message: '수정할 화장품을 찾을 수 없습니다.',
       });
     }
 
-    return res.json({
-      cosmeticId: updated.id,
-      cosmeticName: updated.name,
-      openedAt: updated.opened_at,
+    /* --------------------------------------------------
+     * 3️⃣ 응답
+     * -------------------------------------------------- */
+    return res.status(200).json({
+      message: '화장품 정보가 수정되었습니다.',
+      cosmetic: {
+        cosmeticId: updated.id,
+        cosmeticName: updated.name,
+        createdAt: updated.created_at,
+        expiredAt: updated.expired_at,
+      },
     });
-  } catch (err) {
-    console.error('[updateCosmeticHandler]', err);
+  } catch (error) {
+    console.error('[updateCosmeticHandler]', error);
     return res.status(500).json({
-      message: 'UPDATE_FAILED',
+      message: '화장품 수정 중 오류가 발생했습니다.',
     });
   }
 };
+

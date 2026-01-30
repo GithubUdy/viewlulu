@@ -91,6 +91,7 @@ export const getMyCosmeticGroups = async (userId: number) => {
       cg.id AS "groupId",
       cg.name AS "cosmeticName",
       cg.created_at AS "createdAt",
+      cg.opened_at AS "openedAt",
       MIN(c.s3_key) AS "thumbnailUrl"
     FROM cosmetic_groups cg
     LEFT JOIN cosmetics c
@@ -118,6 +119,7 @@ export const getCosmeticDetail = async ({
       cg.id AS "cosmeticId",
       cg.name AS "cosmeticName",
       cg.created_at AS "createdAt",
+      cg.opened_at AS "openedAt",
       ARRAY_AGG(
         json_build_object(
           's3Key', c.s3_key,
@@ -271,30 +273,35 @@ export const deleteSingleCosmeticById = async ({
   return result.rows[0] as { id: number } | undefined;
 };
 /* ==================================================
- * 🔥 화장품 그룹 수정 (이름 / 개봉일)
+ * 🔥 화장품 그룹 수정
+ * - created_at = 촬영 날짜 (user editable)
  * ================================================== */
 
 export const updateCosmeticGroup = async ({
   groupId,
   userId,
   cosmeticName,
-  openedAt,
+  createdAt,
+  expiredAt,
 }: {
   groupId: number;
   userId: number;
   cosmeticName?: string;
-  openedAt?: string;
+  createdAt?: string;  // 📸 촬영일
+  expiredAt?: string;
 }) => {
   const result = await query(
     `
     UPDATE cosmetic_groups
     SET
       name = COALESCE($1, name),
-      opened_at = COALESCE($2, opened_at)
-    WHERE id = $3 AND user_id = $4
-    RETURNING id, name, opened_at
+      created_at = COALESCE($2, created_at),
+      expired_at = COALESCE($3, expired_at)
+    WHERE id = $4
+      AND user_id = $5
+    RETURNING id, name, created_at, expired_at
     `,
-    [cosmeticName, openedAt, groupId, userId]
+    [cosmeticName, createdAt, expiredAt, groupId, userId]
   );
 
   return result.rows[0];
