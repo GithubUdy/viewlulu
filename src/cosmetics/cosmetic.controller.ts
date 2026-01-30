@@ -22,6 +22,8 @@ import FormData from 'form-data';
 import { v4 as uuidv4 } from 'uuid';
 import { Response } from 'express';
 import pLimit from 'p-limit';
+import { Request, Response } from 'express';
+import { updateCosmeticGroup } from './cosmetic.repository';
 const S3_CONCURRENCY = 5;
 const limit = pLimit(S3_CONCURRENCY);
 
@@ -479,47 +481,63 @@ export const detectCosmeticHandler = async (
 
 
 /** PATCH /cosmetics/:id (그룹 정보 수정) */
+/**
+ * updateCosmeticHandler (FINAL STABLE)
+ * --------------------------------------------------
+ * 🔥 화장품 그룹 정보 수정
+ * - 이름 변경
+ * - 개봉일(opened_at) 수정
+ *
+ * ❗ cosmetics 테이블 ❌
+ * ❗ cosmetic_groups 테이블만 수정
+ * ❗ JSON 요청 전용 (multer ❌)
+*/
 export const updateCosmeticHandler = async (
-  req: AuthRequest,
+  req: Request,
   res: Response
 ) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ message: 'Unauthorized' });
-    }
-
     const groupId = Number(req.params.id);
-    if (Number.isNaN(groupId)) {
-      return res.status(400).json({ message: 'invalid cosmetic id' });
-    }
+    const userId = req.user.userId;
 
-    const { cosmeticName, openedAt } = req.body;
+    /* ===============================
+     * 🔥 BODY 방어 (가장 중요)
+     * =============================== */
+    const body = req.body || {};
+    const cosmeticName = body.cosmeticName;
+    const openedAt = body.purchaseDate; // 프론트 명칭 유지
 
-    // 🔒 아무것도 안 들어오면 수정 불가
     if (!cosmeticName && !openedAt) {
       return res.status(400).json({
-        message: '수정할 항목이 없습니다.',
+        message: 'NO_UPDATE_FIELDS',
       });
     }
 
+    /* ===============================
+     * 🔥 DB UPDATE (cosmetic_groups)
+     * =============================== */
     const updated = await updateCosmeticGroup({
       groupId,
-      userId: req.user.userId,
+      userId,
       cosmeticName,
       openedAt,
     });
 
     if (!updated) {
       return res.status(404).json({
-        message: '화장품을 찾을 수 없습니다.',
+        message: 'COSMETIC_NOT_FOUND',
       });
     }
 
-    return res.status(200).json(updated);
-  } catch (error) {
-    console.error('[updateCosmeticHandler]', error);
+    return res.json({
+      cosmeticId: updated.id,
+      cosmeticName: updated.name,
+      openedAt: updated.opened_at,
+    });
+  } catch (err) {
+    console.error('[updateCosmeticHandler]', err);
     return res.status(500).json({
-      message: '화장품 수정 실패',
+      message: 'UPDATE_FAILED',
     });
   }
 };

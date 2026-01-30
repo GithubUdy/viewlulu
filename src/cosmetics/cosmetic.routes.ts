@@ -67,16 +67,33 @@ router.post(
   detectCosmeticHandler
 );
 
-/* ================= 조회 / 삭제 (기존 유지) ================= */
+/* ================= 조회 / 수정 / 삭제 ================= */
 
+/**
+ * ⚠️ 중요
+ * - PATCH /cosmetics/:id 는 JSON 요청
+ * - multer ❌ (절대 붙이지 말 것)
+ * - app.ts에서 express.json() 선적용 상태
+ */
+
+// 목록
 router.get('/cosmetics/me', authenticate, getMyCosmeticsHandler);
+
+// 상세
 router.get('/cosmetics/:id', authenticate, getCosmeticDetailHandler);
+
+// 수정 (🔥 JSON BODY 기반)
 router.patch(
   '/cosmetics/:id',
   authenticate,
   updateCosmeticHandler
 );
 
-router.delete('/cosmetics/:id', authenticate, deleteCosmeticHandler);
+// 삭제
+router.delete(
+  '/cosmetics/:id',
+  authenticate,
+  deleteCosmeticHandler
+);
 
 export default router;
