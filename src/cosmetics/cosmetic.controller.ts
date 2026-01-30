@@ -22,7 +22,6 @@ import FormData from 'form-data';
 import { v4 as uuidv4 } from 'uuid';
 import pLimit from 'p-limit';
 import { Request, Response } from 'express';
-import { updateCosmeticGroup } from './cosmetic.repository';
 const S3_CONCURRENCY = 5;
 const limit = pLimit(S3_CONCURRENCY);
 
