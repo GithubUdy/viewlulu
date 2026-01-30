@@ -20,7 +20,6 @@ import path from 'path';
 import axios from 'axios';
 import FormData from 'form-data';
 import { v4 as uuidv4 } from 'uuid';
-import { Response } from 'express';
 import pLimit from 'p-limit';
 import { Request, Response } from 'express';
 import { updateCosmeticGroup } from './cosmetic.repository';
@@ -498,7 +497,7 @@ export const updateCosmeticHandler = async (
 ) => {
   try {
     const groupId = Number(req.params.id);
-    const userId = req.user.userId;
+    const userId = (req as any).user.userId;
 
     /* ===============================
      * 🔥 BODY 방어 (가장 중요)
