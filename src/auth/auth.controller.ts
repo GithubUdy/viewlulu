@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
-import { verifyAccessToken, signAccessToken } from '../config/jwt';
+import { verifyRefreshToken, signAccessToken } from '../config/jwt';
 import { findUserByRefreshToken } from '../users/user.repository';
 
 /**
@@ -73,7 +73,6 @@ export const login = async (req: Request, res: Response) => {
 /**
  * 🔄 토큰 재발급
  * POST /auth/refresh
- * ✅ DB에 저장된 refreshToken 검증 필수
  */
 export const refresh = async (req: Request, res: Response) => {
   try {
@@ -83,16 +82,16 @@ export const refresh = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'NO_REFRESH_TOKEN' });
     }
 
-    // 1️⃣ JWT 유효성 검증
-    const decoded = verifyAccessToken(refreshToken) as any;
+    // ✅ 1️⃣ refreshToken 전용 검증
+    const decoded = verifyRefreshToken(refreshToken) as any;
 
-    // 2️⃣ DB에 실제 존재하는 refreshToken인지 확인
+    // ✅ 2️⃣ DB에 실제 존재하는 refreshToken인지 확인
     const user = await findUserByRefreshToken(refreshToken);
     if (!user) {
       return res.status(401).json({ message: 'INVALID_REFRESH_TOKEN' });
     }
 
-    // 3️⃣ accessToken 재발급
+    // ✅ 3️⃣ accessToken 재발급
     const newAccessToken = signAccessToken({
       userId: user.id,
       email: user.email,
@@ -107,6 +106,7 @@ export const refresh = async (req: Request, res: Response) => {
     });
   }
 };
+
 
 /**
  * 🚪 로그아웃
