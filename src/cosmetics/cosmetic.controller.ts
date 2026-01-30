@@ -43,7 +43,7 @@ import {
   deleteSingleCosmeticById,
 
   getDetectCandidates,
-  updateCosmeticGroup
+  updateCosmeticGroup,
 } from './cosmetic.repository';
 
 /* =========================================================
@@ -488,36 +488,38 @@ export const updateCosmeticHandler = async (
       return res.status(401).json({ message: 'Unauthorized' });
     }
 
-    const userId = req.user.userId;
     const groupId = Number(req.params.id);
-
     if (Number.isNaN(groupId)) {
       return res.status(400).json({ message: 'invalid cosmetic id' });
     }
 
     const { cosmeticName, openedAt } = req.body;
 
+    // 🔒 아무것도 안 들어오면 수정 불가
     if (!cosmeticName && !openedAt) {
-      return res.status(400).json({ message: '수정할 값이 없습니다.' });
+      return res.status(400).json({
+        message: '수정할 항목이 없습니다.',
+      });
     }
 
     const updated = await updateCosmeticGroup({
       groupId,
-      userId,
+      userId: req.user.userId,
       cosmeticName,
       openedAt,
     });
 
     if (!updated) {
-      return res.status(404).json({ message: '화장품을 찾을 수 없습니다.' });
+      return res.status(404).json({
+        message: '화장품을 찾을 수 없습니다.',
+      });
     }
 
-    return res.status(200).json({
-      message: '수정 완료',
-      cosmetic: updated,
-    });
+    return res.status(200).json(updated);
   } catch (error) {
     console.error('[updateCosmeticHandler]', error);
-    return res.status(500).json({ message: '수정 실패' });
+    return res.status(500).json({
+      message: '화장품 수정 실패',
+    });
   }
 };
