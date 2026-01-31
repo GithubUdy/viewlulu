@@ -13,6 +13,7 @@ import routes from './routes';
 import cosmeticRoutes from './cosmetics/cosmetic.routes';
 import authRoutes from './auth/auth.routes';
 import aiRoutes from './routes/ai.routes';
+import sttRoutes from './routes/stt.routes';
 
 const app = express();
 
@@ -65,6 +66,7 @@ app.use(cosmeticRoutes);
  * ===================================================== */
 app.use(routes);
 app.use('/ai', aiRoutes);
+app.use('/api/stt', sttRoutes);
 
 /**
  * =====================================================
