@@ -13,7 +13,6 @@ import routes from './routes';
 import cosmeticRoutes from './cosmetics/cosmetic.routes';
 import authRoutes from './auth/auth.routes';
 import aiRoutes from './routes/ai.routes';
-//import sttRoutes from './routes/stt.routes';
 
 const app = express();
 
@@ -35,15 +34,6 @@ app.use((req, res, next) => {
   console.log('==============================');
   next();
 });
-
-/**
- * =====================================================
- * ✅ STT (multipart 전용)  — 🔥 반드시 JSON 파서보다 먼저!
- * - multer가 req stream을 온전히 받아야 req.file이 잡힘
- * - 여기서 body-parser(express.json/urlencoded)가 먼저 돌면
- *   multipart가 깨지거나 소비되어 req.file이 undefined 될 수 있음
- * ===================================================== */
-//app.use('/stt', sttRoutes);
 
 /**
  * =====================================================
