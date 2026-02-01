@@ -135,6 +135,7 @@ router.post('/whisper', upload.single('file'), async (req, res) => {
       // ffmpeg가 없거나 변환 실패해도 앱에 영향 X
       // (가능하면 원본을 그대로 Python에 보내는 fallback도 시도)
       console.error('[STT][FFMPEG] convert failed:', ffErr?.message ?? ffErr);
+      console.log('[STT] file=', req.file?.originalname, req.file?.mimetype, req.file?.size);
 
       // fallback: 원본 그대로 Python에 보내보기 (성공하면 그대로 사용)
       try {
