@@ -43,7 +43,7 @@ app.use((req, res, next) => {
  * - 여기서 body-parser(express.json/urlencoded)가 먼저 돌면
  *   multipart가 깨지거나 소비되어 req.file이 undefined 될 수 있음
  * ===================================================== */
-app.use('/api/stt', sttRoutes);
+app.use('/stt', sttRoutes);
 
 /**
  * =====================================================
