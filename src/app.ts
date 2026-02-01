@@ -13,7 +13,7 @@ import routes from './routes';
 import cosmeticRoutes from './cosmetics/cosmetic.routes';
 import authRoutes from './auth/auth.routes';
 import aiRoutes from './routes/ai.routes';
-import sttRoutes from './routes/stt.routes';
+//import sttRoutes from './routes/stt.routes';
 
 const app = express();
 
@@ -43,7 +43,7 @@ app.use((req, res, next) => {
  * - 여기서 body-parser(express.json/urlencoded)가 먼저 돌면
  *   multipart가 깨지거나 소비되어 req.file이 undefined 될 수 있음
  * ===================================================== */
-app.use('/stt', sttRoutes);
+//app.use('/stt', sttRoutes);
 
 /**
  * =====================================================
