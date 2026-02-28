@@ -2,14 +2,16 @@
 
 ## 📌 프로젝트 소개
 - 시각장애인을 위한 AI 기반 뷰티 매니저 앱
-- STT 기반 음성 제어
+- 화장품 등록 및 조회
 - 화장품 인식 AI
 - 얼굴형 검사 AI
 
 ## 🛠 기술 스택
+- Runtime : Node.js
+- Framework : Express.js
+
 - React Native
 - FastAPI
-- Whisper STT
 - PyTorch
 
 ## 🧠 아키텍처
