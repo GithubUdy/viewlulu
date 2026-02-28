@@ -56,13 +56,13 @@ React Native → Node Proxy → FastAPI AI 서버
 
 ## 📦 실행 방법
 - 노드 서버
- - npm install
- - npm run dev
+   - npm install
+   - npm run dev
 
 - 파이썬 서버
- - pip install -r requirements.txt
- - uvicorn main:app --reload --port 8000
+   - pip install -r requirements.txt
+   - uvicorn main:app --reload --port 8000
 
 - 앱
- - npm install
- - npx react-native run-android
+   - npm install
+   - npx react-native run-android
